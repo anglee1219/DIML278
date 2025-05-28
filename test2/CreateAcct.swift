@@ -61,7 +61,7 @@ struct LoginScreen: View {
                                 .foregroundColor(Color(red: 1, green: 0.988, blue: 0.929))
                                 .opacity(0.9)
                                 .frame(width: 200, height: 40)
-                                .background(Color(red: 0.373, green: 0.42, blue: 0.22))
+                                .background(Color(red: 0.322, green: 0.422, blue: 1))
                                 .cornerRadius(10)
                         }
                         
