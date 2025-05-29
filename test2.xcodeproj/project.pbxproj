@@ -7,6 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7D6537AE2DE87D0300C7E795 /* DIMLView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537A92DE87D0300C7E795 /* DIMLView.swift */; };
+		7D6537AF2DE87D0300C7E795 /* EntryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537AA2DE87D0300C7E795 /* EntryStore.swift */; };
+		7D6537B02DE87D0300C7E795 /* PromptCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537AC2DE87D0300C7E795 /* PromptCard.swift */; };
+		7D6537B22DE87D0300C7E795 /* ImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537AB2DE87D0300C7E795 /* ImagePicker.swift */; };
+		7D6537B42DE87D0300C7E795 /* AddEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537A62DE87D0300C7E795 /* AddEntryView.swift */; };
+		7D6537B92DE880E000C7E795 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B72DE880E000C7E795 /* Models.swift */; };
+		7D6537BA2DE880E000C7E795 /* GroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B62DE880E000C7E795 /* GroupView.swift */; };
+		7D6537BB2DE880E000C7E795 /* EntryInteractionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */; };
+		7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BC2DE8815F00C7E795 /* GroupViewWrapper.swift */; };
+		7D6537C22DE884CD00C7E795 /* CreateGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */; };
+		7D6537C32DE884CD00C7E795 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537C02DE884CD00C7E795 /* GroupListView.swift */; };
+		7D6537C42DE884CD00C7E795 /* GroupDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */; };
 		ED38CD9D2DE6B12D0076D908 /* CreateAcct.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED38CD9C2DE6B1180076D908 /* CreateAcct.swift */; };
 		ED38CD9F2DE6B2430076D908 /* SignUpScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */; };
 		EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1B2DE523B200C36E32 /* test2App.swift */; };
@@ -16,6 +28,18 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		7D6537A62DE87D0300C7E795 /* AddEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEntryView.swift; sourceTree = "<group>"; };
+		7D6537A92DE87D0300C7E795 /* DIMLView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DIMLView.swift; sourceTree = "<group>"; };
+		7D6537AA2DE87D0300C7E795 /* EntryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryStore.swift; sourceTree = "<group>"; };
+		7D6537AB2DE87D0300C7E795 /* ImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePicker.swift; sourceTree = "<group>"; };
+		7D6537AC2DE87D0300C7E795 /* PromptCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCard.swift; sourceTree = "<group>"; };
+		7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryInteractionView.swift; sourceTree = "<group>"; };
+		7D6537B62DE880E000C7E795 /* GroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupView.swift; sourceTree = "<group>"; };
+		7D6537B72DE880E000C7E795 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		7D6537BC2DE8815F00C7E795 /* GroupViewWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupViewWrapper.swift; sourceTree = "<group>"; };
+		7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateGroupView.swift; sourceTree = "<group>"; };
+		7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupDetailView.swift; sourceTree = "<group>"; };
+		7D6537C02DE884CD00C7E795 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
 		ED38CD9C2DE6B1180076D908 /* CreateAcct.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAcct.swift; sourceTree = "<group>"; };
 		ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpScreen.swift; sourceTree = "<group>"; };
 		EDD7AA182DE523B200C36E32 /* test2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = test2.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -36,6 +60,39 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		7D6537AD2DE87D0300C7E795 /* DIMLApp */ = {
+			isa = PBXGroup;
+			children = (
+				7D6537A62DE87D0300C7E795 /* AddEntryView.swift */,
+				7D6537A92DE87D0300C7E795 /* DIMLView.swift */,
+				7D6537AA2DE87D0300C7E795 /* EntryStore.swift */,
+				7D6537AB2DE87D0300C7E795 /* ImagePicker.swift */,
+				7D6537AC2DE87D0300C7E795 /* PromptCard.swift */,
+			);
+			path = DIMLApp;
+			sourceTree = "<group>";
+		};
+		7D6537B82DE880E000C7E795 /* DIMLGroup */ = {
+			isa = PBXGroup;
+			children = (
+				7D6537BC2DE8815F00C7E795 /* GroupViewWrapper.swift */,
+				7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */,
+				7D6537B62DE880E000C7E795 /* GroupView.swift */,
+				7D6537B72DE880E000C7E795 /* Models.swift */,
+			);
+			path = DIMLGroup;
+			sourceTree = "<group>";
+		};
+		7D6537C12DE884CD00C7E795 /* DIMLGroupScreens */ = {
+			isa = PBXGroup;
+			children = (
+				7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */,
+				7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */,
+				7D6537C02DE884CD00C7E795 /* GroupListView.swift */,
+			);
+			path = DIMLGroupScreens;
+			sourceTree = "<group>";
+		};
 		EDD7AA0F2DE523B200C36E32 = {
 			isa = PBXGroup;
 			children = (
@@ -59,6 +116,9 @@
 				ED38CD9C2DE6B1180076D908 /* CreateAcct.swift */,
 				EDD7AA1B2DE523B200C36E32 /* test2App.swift */,
 				EDD7AA1D2DE523B200C36E32 /* ContentView.swift */,
+				7D6537C12DE884CD00C7E795 /* DIMLGroupScreens */,
+				7D6537B82DE880E000C7E795 /* DIMLGroup */,
+				7D6537AD2DE87D0300C7E795 /* DIMLApp */,
 				EDD7AA1F2DE523B400C36E32 /* Assets.xcassets */,
 				EDD7AA212DE523B400C36E32 /* Preview Content */,
 			);
@@ -101,7 +161,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1430;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					EDD7AA172DE523B200C36E32 = {
 						CreatedOnToolsVersion = 14.3.1;
@@ -146,6 +206,18 @@
 				EDD7AA1E2DE523B200C36E32 /* ContentView.swift in Sources */,
 				EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */,
 				ED38CD9D2DE6B12D0076D908 /* CreateAcct.swift in Sources */,
+				7D6537C22DE884CD00C7E795 /* CreateGroupView.swift in Sources */,
+				7D6537C32DE884CD00C7E795 /* GroupListView.swift in Sources */,
+				7D6537C42DE884CD00C7E795 /* GroupDetailView.swift in Sources */,
+				7D6537B92DE880E000C7E795 /* Models.swift in Sources */,
+				7D6537BA2DE880E000C7E795 /* GroupView.swift in Sources */,
+				7D6537BB2DE880E000C7E795 /* EntryInteractionView.swift in Sources */,
+				7D6537AE2DE87D0300C7E795 /* DIMLView.swift in Sources */,
+				7D6537AF2DE87D0300C7E795 /* EntryStore.swift in Sources */,
+				7D6537B02DE87D0300C7E795 /* PromptCard.swift in Sources */,
+				7D6537B22DE87D0300C7E795 /* ImagePicker.swift in Sources */,
+				7D6537B42DE87D0300C7E795 /* AddEntryView.swift in Sources */,
+				7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */,
 				ED38CD9F2DE6B2430076D908 /* SignUpScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -189,6 +261,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -249,6 +322,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;

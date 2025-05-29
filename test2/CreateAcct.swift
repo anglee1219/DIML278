@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct LoginScreen: View {
+    
+    //rebecca edits
+    @State private var isLoggedIn = false
+    @StateObject private var store = EntryStore()
+    
+    
     var body: some View {
         NavigationView {
             ZStack {
@@ -53,17 +59,36 @@ struct LoginScreen: View {
                         }
                         
                         // Login Button
-                        Button(action: {
-                            // Add login logic here
-                        }) {
-                            Text("Login")
-                                .font(.custom("Markazi Text", size: 20))
-                                .foregroundColor(Color(red: 1, green: 0.988, blue: 0.929))
-                                .opacity(0.9)
-                                .frame(width: 200, height: 40)
-                                .background(Color(red: 0.322, green: 0.422, blue: 1))
-                                .cornerRadius(10)
+//                        Button(action: {
+//                            // Add login logic here
+//                        }) {
+//                            Text("Login")
+//                                .font(.custom("Markazi Text", size: 20))
+//                                .foregroundColor(Color(red: 1, green: 0.988, blue: 0.929))
+//                                .opacity(0.9)
+//                                .frame(width: 200, height: 40)
+//                                .background(Color(red: 0.322, green: 0.422, blue: 1))
+//                                .cornerRadius(10)
+//                        }
+                        
+                        //rebecca login
+                        NavigationLink(destination:  GroupListView(), isActive: $isLoggedIn) {
+                            
+                            Button("Login") {
+                                
+                                isLoggedIn = true
+                                
+                                Text("Login")
+                                    .font(.custom("Markazi Text", size: 20))
+                                    .foregroundColor(Color(red: 1, green: 0.988, blue: 0.929))
+                                    .opacity(0.9)
+                                    .frame(width: 200, height: 40)
+                                    .background(Color(red: 0.322, green: 0.422, blue: 1))
+                                    .cornerRadius(10)
+                            }
+                            .padding(.bottom, 10)
                         }
+
                         
                         // Forgot Password
                         Button(action: {
