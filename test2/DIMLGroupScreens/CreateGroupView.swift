@@ -46,3 +46,10 @@ struct CreateGroupView: View {
         }
     }
 }
+struct CreateGroupView_Previews: PreviewProvider {
+    static var previews: some View {
+        CreateGroupView(onGroupCreated: { group in
+            print("Mock group created: \(group.name)")
+        })
+    }
+}

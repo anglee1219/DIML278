@@ -4,7 +4,11 @@ extension Font {
     static func caprasimo_DIML() -> Font {
         return Font.custom("Caprasimo-Regular", size: 80)
     }
+        
 }
+
+
+    
 
 extension Color {
     static let mainYellow = Color(red: 255 / 255, green: 208 / 255, blue: 88 / 255)
