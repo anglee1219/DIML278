@@ -5,6 +5,8 @@ struct LoginScreen: View {
     //rebecca edits
     @State private var isLoggedIn = false
     @StateObject private var store = EntryStore()
+    @State private var emailOrPhone: String = ""
+    @State private var password: String = ""
     
     
     var body: some View {
@@ -21,20 +23,20 @@ struct LoginScreen: View {
                         // Text-based Logo
                         VStack(spacing: 8) {
                             Text("DIML")
-                                .font(.custom("Markazi Text", size: 48))
+                                .font(.caprasimo_DIML())
                                 .fontWeight(.bold)
-                                .foregroundColor(Color(red: 0.373, green: 0.42, blue: 0.22))
+                                .foregroundColor(Color.mainYellow)
                             
                             Text("DAY IN MY LIFE")
                                 .font(.custom("Markazi Text", size: 20))
                                 .kerning(2)
-                                .foregroundColor(Color(red: 0.373, green: 0.22, blue: 0.1))
+                                .foregroundColor(Color.mainBlue)
                         }
-                        
+                        Spacer()
                         // Input Fields
-                        VStack(spacing: 35) {
+                        VStack(spacing: 30) {
                             VStack(alignment: .leading, spacing: 8) {
-                                TextField("Phone Number, username, or email", text: .constant(""))
+                                TextField("Phone Number, username, or email", text: $emailOrPhone)
                                     .font(.custom("Markazi Text", size: 20))
                                     .padding(.bottom, 5)
                                     .foregroundColor(.black)
@@ -46,7 +48,7 @@ struct LoginScreen: View {
                             .padding(.horizontal)
                             
                             VStack(alignment: .leading, spacing: 8) {
-                                SecureField("Password", text: .constant(""))
+                                SecureField("Password", text: $password)
                                     .font(.custom("Markazi Text", size: 20))
                                     .padding(.bottom, 5)
                                     .foregroundColor(.black)
@@ -58,33 +60,19 @@ struct LoginScreen: View {
                             .padding(.horizontal)
                         }
                         
-                        // Login Button
-//                        Button(action: {
-//                            // Add login logic here
-//                        }) {
-//                            Text("Login")
-//                                .font(.custom("Markazi Text", size: 20))
-//                                .foregroundColor(Color(red: 1, green: 0.988, blue: 0.929))
-//                                .opacity(0.9)
-//                                .frame(width: 200, height: 40)
-//                                .background(Color(red: 0.322, green: 0.422, blue: 1))
-//                                .cornerRadius(10)
-//                        }
-                        
-                        //rebecca login
                         NavigationLink(destination:  GroupListView(), isActive: $isLoggedIn) {
+                            EmptyView()
+                        }
+                        Button(action: {
                             
-                            Button("Login") {
-                                
-                                isLoggedIn = true
-                                
-                                Text("Login")
-                                    .font(.custom("Markazi Text", size: 20))
-                                    .foregroundColor(Color(red: 1, green: 0.988, blue: 0.929))
-                                    .opacity(0.9)
-                                    .frame(width: 200, height: 40)
-                                    .background(Color(red: 0.322, green: 0.422, blue: 1))
-                                    .cornerRadius(10)
+                            isLoggedIn = true
+                        }) {
+                            Text("Login")
+                                .font(.custom("Markazi Text", size: 20))
+                                .foregroundColor(.white)
+                                .frame(width: 200, height: 45)
+                                .background(Color.mainBlue)
+                                .cornerRadius(10)
                             }
                             .padding(.bottom, 10)
                         }
@@ -124,7 +112,7 @@ struct LoginScreen: View {
             }
         }
     }
-}
+
 struct LoginScreen_Previews: PreviewProvider {
     static var previews: some View {
         LoginScreen()
