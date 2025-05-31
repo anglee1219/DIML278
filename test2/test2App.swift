@@ -1,17 +1,29 @@
-//
-//  test2App.swift
-//  test2
-//
-//  Created by Angela Lee on 5/26/25.
-//
-
 import SwiftUI
 
 @main
 struct test2App: App {
+    init() {
+        // FOR TESTING: Reset login state on launch
+        UserDefaults.standard.set(false, forKey: "isLoggedIn")
+    }
+
     var body: some Scene {
         WindowGroup {
-            LoginScreen()
+            RootView()
+        }
+    }
+}
+
+struct RootView: View {
+    @AppStorage("isLoggedIn") private var isLoggedIn: Bool = false
+
+    var body: some View {
+        NavigationView {
+            if isLoggedIn {
+                MainTabView()
+            } else {
+                LoginScreen()
+            }
         }
     }
 }

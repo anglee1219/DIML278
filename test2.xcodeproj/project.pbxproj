@@ -19,13 +19,14 @@
 		7D6537C22DE884CD00C7E795 /* CreateGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */; };
 		7D6537C32DE884CD00C7E795 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537C02DE884CD00C7E795 /* GroupListView.swift */; };
 		7D6537C42DE884CD00C7E795 /* GroupDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */; };
-		ED38CD9D2DE6B12D0076D908 /* CreateAcct.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED38CD9C2DE6B1180076D908 /* CreateAcct.swift */; };
+		ED38CD9D2DE6B12D0076D908 /* LoginScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED38CD9C2DE6B1180076D908 /* LoginScreen.swift */; };
 		ED38CD9F2DE6B2430076D908 /* SignUpScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */; };
 		ED6680972DE999A2004E63A8 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6680962DE9999A004E63A8 /* MainTabView.swift */; };
+		ED98B0742DEAA45B00072A68 /* AddFriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */; };
+		ED98B07D2DEAD54700072A68 /* TopNavBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B07C2DEAD54300072A68 /* TopNavBar.swift */; };
 		EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1B2DE523B200C36E32 /* test2App.swift */; };
 		EDD7AA1E2DE523B200C36E32 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1D2DE523B200C36E32 /* ContentView.swift */; };
 		EDD7AA232DE523B400C36E32 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EDD7AA222DE523B400C36E32 /* Preview Assets.xcassets */; };
-		EDEC5E0F2DE97593006C06F3 /* Branding.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDEC5E0E2DE97593006C06F3 /* Branding.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,18 +42,21 @@
 		7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateGroupView.swift; sourceTree = "<group>"; };
 		7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupDetailView.swift; sourceTree = "<group>"; };
 		7D6537C02DE884CD00C7E795 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
-		ED38CD9C2DE6B1180076D908 /* CreateAcct.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAcct.swift; sourceTree = "<group>"; };
+		ED38CD9C2DE6B1180076D908 /* LoginScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginScreen.swift; sourceTree = "<group>"; };
 		ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpScreen.swift; sourceTree = "<group>"; };
 		ED6680962DE9999A004E63A8 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddFriendsView.swift; sourceTree = "<group>"; };
+		ED98B07C2DEAD54300072A68 /* TopNavBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopNavBar.swift; sourceTree = "<group>"; };
 		EDD7AA182DE523B200C36E32 /* test2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = test2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDD7AA1B2DE523B200C36E32 /* test2App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = test2App.swift; sourceTree = "<group>"; };
 		EDD7AA1D2DE523B200C36E32 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		EDD7AA222DE523B400C36E32 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		EDEC5E0D2DE9750C006C06F3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		EDEC5E0E2DE97593006C06F3 /* Branding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Branding.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		ED98B0752DEAC2E400072A68 /* DIMLProfileScreens */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = DIMLProfileScreens; sourceTree = "<group>"; };
+		ED98B0802DEAE2C800072A68 /* CreateAcctScreens */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CreateAcctScreens; sourceTree = "<group>"; };
 		EDCD70292DE96EC80000175E /* Resources */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Resources; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -93,6 +97,7 @@
 		7D6537C12DE884CD00C7E795 /* DIMLGroupScreens */ = {
 			isa = PBXGroup;
 			children = (
+				ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */,
 				7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */,
 				7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */,
 				7D6537C02DE884CD00C7E795 /* GroupListView.swift */,
@@ -119,12 +124,14 @@
 		EDD7AA1A2DE523B200C36E32 /* test2 */ = {
 			isa = PBXGroup;
 			children = (
+				ED98B0802DEAE2C800072A68 /* CreateAcctScreens */,
+				ED98B07C2DEAD54300072A68 /* TopNavBar.swift */,
+				ED98B0752DEAC2E400072A68 /* DIMLProfileScreens */,
 				ED6680962DE9999A004E63A8 /* MainTabView.swift */,
 				EDEC5E0D2DE9750C006C06F3 /* Info.plist */,
-				EDEC5E0E2DE97593006C06F3 /* Branding.swift */,
 				EDCD70292DE96EC80000175E /* Resources */,
 				ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */,
-				ED38CD9C2DE6B1180076D908 /* CreateAcct.swift */,
+				ED38CD9C2DE6B1180076D908 /* LoginScreen.swift */,
 				EDD7AA1B2DE523B200C36E32 /* test2App.swift */,
 				EDD7AA1D2DE523B200C36E32 /* ContentView.swift */,
 				7D6537C12DE884CD00C7E795 /* DIMLGroupScreens */,
@@ -159,6 +166,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				ED98B0752DEAC2E400072A68 /* DIMLProfileScreens */,
+				ED98B0802DEAE2C800072A68 /* CreateAcctScreens */,
 				EDCD70292DE96EC80000175E /* Resources */,
 			);
 			name = test2;
@@ -215,10 +224,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EDEC5E0F2DE97593006C06F3 /* Branding.swift in Sources */,
 				EDD7AA1E2DE523B200C36E32 /* ContentView.swift in Sources */,
 				EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */,
-				ED38CD9D2DE6B12D0076D908 /* CreateAcct.swift in Sources */,
+				ED38CD9D2DE6B12D0076D908 /* LoginScreen.swift in Sources */,
 				7D6537C22DE884CD00C7E795 /* CreateGroupView.swift in Sources */,
 				7D6537C32DE884CD00C7E795 /* GroupListView.swift in Sources */,
 				7D6537C42DE884CD00C7E795 /* GroupDetailView.swift in Sources */,
@@ -226,6 +234,8 @@
 				7D6537BA2DE880E000C7E795 /* GroupView.swift in Sources */,
 				7D6537BB2DE880E000C7E795 /* EntryInteractionView.swift in Sources */,
 				7D6537AE2DE87D0300C7E795 /* DIMLView.swift in Sources */,
+				ED98B0742DEAA45B00072A68 /* AddFriendsView.swift in Sources */,
+				ED98B07D2DEAD54700072A68 /* TopNavBar.swift in Sources */,
 				ED6680972DE999A2004E63A8 /* MainTabView.swift in Sources */,
 				7D6537AF2DE87D0300C7E795 /* EntryStore.swift in Sources */,
 				7D6537B02DE87D0300C7E795 /* PromptCard.swift in Sources */,
@@ -363,6 +373,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"test2/Preview Content\"";
+				DEVELOPMENT_TEAM = 3S3XG5VT5D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = test2/Info.plist;
@@ -371,6 +382,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -392,6 +404,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"test2/Preview Content\"";
+				DEVELOPMENT_TEAM = 3S3XG5VT5D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = test2/Info.plist;
@@ -400,6 +413,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

@@ -1,21 +1,28 @@
 import SwiftUI
 
+// Struct to hold all account-related fields
+struct AccountData {
+    var email = ""
+    var username = ""
+    var password = ""
+    var retypePassword = ""
+}
+
 struct CreateAccountView: View {
-    @State private var username = ""
-    @State private var password = ""
-    @State private var retypePassword = ""
+    @State private var account = AccountData()
+    @State private var navigateToNext = false
 
     // Validation logic
-    private var isLongEnough: Bool { password.count >= 8 }
+    private var isLongEnough: Bool { account.password.count >= 8 }
     private var hasSpecialChar: Bool {
         let specialCharRegex = ".*[^A-Za-z0-9].*"
-        return NSPredicate(format: "SELF MATCHES %@", specialCharRegex).evaluate(with: password)
+        return NSPredicate(format: "SELF MATCHES %@", specialCharRegex).evaluate(with: account.password)
     }
     private var hasUppercase: Bool {
-        password.rangeOfCharacter(from: .uppercaseLetters) != nil
+        account.password.rangeOfCharacter(from: .uppercaseLetters) != nil
     }
     private var passwordsMatch: Bool {
-        !password.isEmpty && password == retypePassword
+        !account.password.isEmpty && account.password == account.retypePassword
     }
 
     var body: some View {
@@ -39,13 +46,14 @@ struct CreateAccountView: View {
 
                 // Text fields
                 VStack(spacing: 20) {
-                    CustomTextField(placeholder: "Username", text: $username)
-                    CustomTextField(placeholder: "Password", text: $password, isSecure: true)
-                    CustomTextField(placeholder: "Retype Password", text: $retypePassword, isSecure: true)
+                    CustomTextField(placeholder: "Email", text: $account.email)
+                    CustomTextField(placeholder: "Username", text: $account.username)
+                    CustomTextField(placeholder: "Password", text: $account.password, isSecure: true)
+                    CustomTextField(placeholder: "Retype Password", text: $account.retypePassword, isSecure: true)
                 }
                 .padding(.top, 20)
 
-                // Instructions
+                // Instructions and login option
                 VStack(spacing: 10) {
                     Text("Create a Username and Password")
                         .font(.custom("Markazi Text", size: 18))
@@ -57,26 +65,50 @@ struct CreateAccountView: View {
                         ChecklistItem(text: "1 Uppercase Letter", passed: hasUppercase)
                         ChecklistItem(text: "Passwords Match", passed: passwordsMatch)
                     }
+
+                    // Login link
+                    HStack {
+                        Text("Have an account?")
+                            .font(.custom("Markazi Text", size: 18))
+                            .foregroundColor(.black.opacity(0.6))
+
+                        NavigationLink(destination: LoginScreen()) {
+                            Text("Log in")
+                                .font(.custom("Markazi Text", size: 18))
+                                .foregroundColor(Color(red: 0.733, green: 0.424, blue: 0.141))
+                        }
+                    }
+                    .padding(.top, 8)
                 }
-                .padding(.top, 10)
 
                 Spacer()
 
-                // Forward arrow
+                // Navigation arrow
+                NavigationLink(destination: BuildProfileFlowView(), isActive: $navigateToNext) {
+                    EmptyView()
+                }
+
                 HStack {
                     Spacer()
                     Button(action: {
-                        // Navigate to next screen
+                        if isLongEnough && hasSpecialChar && hasUppercase && passwordsMatch {
+                            navigateToNext = true
+                        }
                     }) {
                         Image(systemName: "arrow.right")
                             .font(.title2)
-                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                            .foregroundColor(
+                                (isLongEnough && hasSpecialChar && hasUppercase && passwordsMatch) ?
+                                Color(red: 0.157, green: 0.212, blue: 0.094) : .gray
+                            )
                     }
+                    .disabled(!(isLongEnough && hasSpecialChar && hasUppercase && passwordsMatch))
                 }
                 .padding(.horizontal)
             }
             .padding(.horizontal, 30)
         }
+        .navigationBarBackButtonHidden(true)
     }
 }
 
@@ -120,13 +152,8 @@ struct ChecklistItem: View {
 // MARK: - Preview
 struct CreateAccountView_Previews: PreviewProvider {
     static var previews: some View {
-        CreateAccountView()
+        NavigationView {
+            CreateAccountView()
+        }
     }
 }
-//
-//  CreateAccountView.swift
-//  test2
-//
-//  Created by Angela Lee on 5/31/25.
-//
-

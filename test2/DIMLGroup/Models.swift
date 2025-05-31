@@ -29,3 +29,17 @@ struct Comment: Identifiable {
     let text: String
     let timestamp: Date
 }
+
+struct SuggestedUser: Identifiable {
+    let id = UUID()
+    let name: String
+    let username: String
+    let mutualFriends: Int
+    let source: String
+}
+
+let sampleSuggestions: [SuggestedUser] = [
+    SuggestedUser(name: "Chase Anderson", username: "chaseyanderson12", mutualFriends: 3, source: "3 mutual friends"),
+    SuggestedUser(name: "Julia Xu", username: "julia_15", mutualFriends: 5, source: "5+ mutual friends"),
+    SuggestedUser(name: "Josh Wren", username: "joshua.wren", mutualFriends: 0, source: "from your contacts")
+]
