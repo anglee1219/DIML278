@@ -24,18 +24,19 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Switch tabs
-                switch currentTab {
-                case .home:
-                    GroupListView()
-                case .profile:
-                    ProfileView()
-                case .camera:
-                    EmptyView() // Camera doesn't have its own screen
-                }
+        ZStack {
+            // Switch tabs
+            switch currentTab {
+            case .home:
+                GroupListView()
+            case .profile:
+                ProfileView()
+            case .camera:
+                EmptyView() // Camera doesn't have its own screen
+            }
 
+            VStack {
+                Spacer()
                 // Bottom NavBar
                 if !keyboardVisible {
                     BottomNavBar(currentTab: $currentTab) {
@@ -43,39 +44,37 @@ struct MainTabView: View {
                     }
                 }
             }
-            .onAppear {
-                // Setup keyboard notifications
-                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in
-                    withAnimation {
-                        keyboardVisible = true
+        }
+        .onAppear {
+            // Setup keyboard notifications
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in
+                withAnimation {
+                    keyboardVisible = true
+                }
+            }
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
+                withAnimation {
+                    keyboardVisible = false
+                }
+            }
+        }
+        .sheet(isPresented: $showCamera) {
+            CameraView(isPresented: $showCamera) { image in
+                print("Image captured")
+                // Handle image save if needed
+            }
+        }
+        .alert(isPresented: $showPermissionAlert) {
+            Alert(
+                title: Text("Camera Access Required"),
+                message: Text("Please enable camera access in Settings."),
+                primaryButton: .default(Text("Settings")) {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
                     }
-                }
-                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
-                    withAnimation {
-                        keyboardVisible = false
-                    }
-                }
-            }
-            .sheet(isPresented: $showCamera) {
-                CameraView(isPresented: $showCamera) { image in
-                    print("Image captured")
-                    // Handle image save if needed
-                }
-            }
-            .alert(isPresented: $showPermissionAlert) {
-                Alert(
-                    title: Text("Camera Access Required"),
-                    message: Text("Please enable camera access in Settings."),
-                    primaryButton: .default(Text("Settings")) {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    },
-                    secondaryButton: .cancel()
-                )
-            }
-            .navigationBarHidden(true)
-            .ignoresSafeArea(.keyboard)
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 }
