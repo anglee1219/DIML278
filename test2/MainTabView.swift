@@ -5,6 +5,7 @@ struct MainTabView: View {
     @State private var currentTab: Tab = .home
     @State private var showCamera = false
     @State private var showPermissionAlert = false
+    @State private var keyboardVisible = false
 
     // Handle camera permission
     func checkCameraPermission() {
@@ -32,14 +33,27 @@ struct MainTabView: View {
                 case .profile:
                     ProfileView()
                 case .camera:
-                    EmptyView() // Camera doesn’t have its own screen
+                    EmptyView() // Camera doesn't have its own screen
                 }
 
-                Spacer()
-
                 // Bottom NavBar
-                BottomNavBar(currentTab: $currentTab) {
-                    checkCameraPermission()
+                if !keyboardVisible {
+                    BottomNavBar(currentTab: $currentTab) {
+                        checkCameraPermission()
+                    }
+                }
+            }
+            .onAppear {
+                // Setup keyboard notifications
+                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in
+                    withAnimation {
+                        keyboardVisible = true
+                    }
+                }
+                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
+                    withAnimation {
+                        keyboardVisible = false
+                    }
                 }
             }
             .sheet(isPresented: $showCamera) {
@@ -61,6 +75,7 @@ struct MainTabView: View {
                 )
             }
             .navigationBarHidden(true)
+            .ignoresSafeArea(.keyboard)
         }
     }
 }

@@ -17,6 +17,13 @@ struct TopNavBar: View {
                 Color(red: 1, green: 0.988, blue: 0.929)
                     .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 4)
 
+                // Center logo in ZStack
+                Image("DIML_Logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 60, height: 60)
+
+                // Side buttons in HStack
                 HStack {
                     // Back button
                     if showsBack {
@@ -28,14 +35,6 @@ struct TopNavBar: View {
                     } else {
                         Spacer().frame(width: 44)
                     }
-
-                    Spacer()
-
-                    // Logo in the center
-                    Image("DIML_Logo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 60, height: 60)
 
                     Spacer()
 

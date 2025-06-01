@@ -48,6 +48,7 @@ struct GroupDetailView: View {
     @State private var showPermissionAlert = false
     @Environment(\.dismiss) private var dismiss
     @State private var currentTab: Tab = .home
+    @State private var showSettings = false
 
     let currentUserId = "1"
 
@@ -95,7 +96,7 @@ struct GroupDetailView: View {
                 Spacer()
 
                 Button(action: {
-                    // Settings action
+                    showSettings = true
                 }) {
                     Image(systemName: "slider.horizontal.3")
                         .foregroundColor(.black)
@@ -171,6 +172,10 @@ struct GroupDetailView: View {
                 print("Image captured")
             }
         }
+        .sheet(isPresented: $showSettings) {
+            GroupSettingsView()
+        }
+
         .alert(isPresented: $showPermissionAlert) {
             Alert(
                 title: Text("Camera Access Required"),

@@ -7,6 +7,8 @@
 	<key>UIAppFonts</key>
 	<array>
 		<string>Caprasimo-Regular.ttf</string>
+		<string>Fredoka-Regular.ttf</string>
+		<string>Fredoka-Medium.ttf</string>
 	</array>
 </dict>
 </plist>

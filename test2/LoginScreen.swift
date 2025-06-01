@@ -5,6 +5,7 @@ struct LoginScreen: View {
     @StateObject private var store = EntryStore()
     @State private var emailOrPhone: String = ""
     @State private var password: String = ""
+    @State private var isPressed = false
 
     var body: some View {
         ZStack {
@@ -19,11 +20,11 @@ struct LoginScreen: View {
                     // Logo
                     VStack(spacing: 8) {
                         Text("DIML")
-                            .font(.custom("Fredoka-Bold", size: 32))
+                            .font(.custom("Caprasimo-Regular", size: 70))
                             .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
 
                         Text("DAY IN MY LIFE")
-                            .font(.custom("Markazi Text", size: 20))
+                            .font(.custom("Fredoka-Regular", size: 20))
                             .kerning(2)
                             .foregroundColor(Color(red: 0.353, green: 0.447, blue: 0.875))
                     }
@@ -63,15 +64,25 @@ struct LoginScreen: View {
 
                     // Login Button
                     Button(action: {
-                        // TODO: Add actual auth logic
-                        isLoggedIn = true
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                            isPressed = true
+                        }
+                        
+                        // Delay the login action slightly for animation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            isLoggedIn = true
+                            isPressed = false
+                        }
                     }) {
                         Text("Login")
-                            .font(.custom("Markazi Text", size: 20))
+                            .font(.custom("Fredoka-Medium", size: 20))
                             .foregroundColor(.white)
                             .frame(width: 200, height: 45)
                             .background(Color(red: 0.353, green: 0.447, blue: 0.875))
                             .cornerRadius(10)
+                            .scaleEffect(isPressed ? 0.95 : 1.0)
+                            .opacity(isPressed ? 0.9 : 1.0)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
                     }
                     .padding(.bottom, 10)
 
@@ -81,13 +92,14 @@ struct LoginScreen: View {
                     }) {
                         Text("Forgot Password?")
                             .font(.custom("Markazi Text", size: 20))
-                            .foregroundColor(Color(red: 0.733, green: 0.424, blue: 0.141))
-                            .opacity(0.8)
+                            .foregroundColor(Color.mainYellow)
+                            .opacity(0.9)
+                            .shadow(radius: 0.3)
                     }
 
                     // Sign Up Section
                     HStack(spacing: 5) {
-                        Text("Don’t have an account?")
+                        Text("Don't have an account?")
                             .font(.custom("Markazi Text", size: 20))
                             .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
                             .opacity(0.6)
@@ -95,8 +107,9 @@ struct LoginScreen: View {
                         NavigationLink(destination: CreateAccountView()) {
                             Text("Sign Up")
                                 .font(.custom("Markazi Text", size: 20))
-                                .foregroundColor(Color(red: 0.733, green: 0.424, blue: 0.141))
-                                .opacity(0.8)
+                                .foregroundColor(Color.mainYellow)
+                                .opacity(0.9)
+                                .shadow(radius: 0.3)
                         }
                     }
 
