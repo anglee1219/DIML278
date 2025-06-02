@@ -1,19 +1,178 @@
 import SwiftUI
 
-
 struct AddFriendsView: View {
     @Environment(\.dismiss) var dismiss
+    @State private var searchText = ""
     @State private var addedFriends: Set<String> = []
+    @State private var yourFriends: [SuggestedUser] = []
+    @State private var recentlyAdded: String? = nil
+    @State private var selectedFriend: SuggestedUser? = nil
+    @State private var showFriendProfile = false
+    @State private var showRemoveAlert = false
+    @State private var friendToRemove: SuggestedUser? = nil
     private let mainYellow = Color(red: 1.0, green: 0.75, blue: 0)
+    
+    // Load saved friends when view appears
+    private func loadSavedFriends() {
+        if let savedFriendUsernames = UserDefaults.standard.stringArray(forKey: "addedFriends") {
+            addedFriends = Set(savedFriendUsernames)
+            yourFriends = sampleSuggestions.filter { addedFriends.contains($0.username) }
+        }
+    }
+    
+    // Save friends to UserDefaults
+    private func saveFriends() {
+        UserDefaults.standard.set(Array(addedFriends), forKey: "addedFriends")
+    }
+    
+    private func removeFriend(_ friend: SuggestedUser) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            addedFriends.remove(friend.username)
+            yourFriends.removeAll { $0.username == friend.username }
+            saveFriends()
+        }
+    }
+
+    var filteredSuggestions: [SuggestedUser] {
+        if searchText.isEmpty {
+            return sampleSuggestions.filter { user in
+                !addedFriends.contains(user.username) || recentlyAdded == user.username
+            }
+        }
+        return sampleSuggestions.filter { user in
+            (!addedFriends.contains(user.username) || recentlyAdded == user.username) &&
+            (user.name.lowercased().contains(searchText.lowercased()) ||
+             user.username.lowercased().contains(searchText.lowercased()))
+        }
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            headerBar
-            searchBar
-            findFriendsTitle
-            suggestionsList
+        NavigationView {
+            VStack(spacing: 0) {
+                headerBar
+                searchBar
+                
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Your Friends Section
+                        if !yourFriends.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Your Friends")
+                                    .font(.custom("Markazi Text", size: 28))
+                                    .bold()
+                                    .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0))
+                                    .padding(.horizontal)
+                                
+                                List {
+                                    ForEach(yourFriends) { friend in
+                                        FriendRowView(
+                                            person: friend,
+                                            isInYourFriends: true,
+                                            recentlyAdded: recentlyAdded,
+                                            mainYellow: mainYellow,
+                                            onTap: {
+                                                selectedFriend = friend
+                                                showFriendProfile = true
+                                            }
+                                        )
+                                        .listRowInsets(EdgeInsets())
+                                        .listRowBackground(Color.white)
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                            Button(role: .destructive) {
+                                                friendToRemove = friend
+                                                showRemoveAlert = true
+                                            } label: {
+                                                Label("Remove", systemImage: "person.badge.minus")
+                                            }
+                                        }
+                                    }
+                                }
+                                .listStyle(PlainListStyle())
+                                .frame(height: CGFloat(yourFriends.count * 84)) // Adjust this value based on your row height
+                                .background(Color.white)
+                                .cornerRadius(20)
+                                .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
+                            }
+                            .padding(.horizontal)
+                        }
+                        
+                        // Find Friends Section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Find Friends")
+                                .font(.custom("Markazi Text", size: 28))
+                                .bold()
+                                .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0))
+                                .padding(.horizontal)
+                            
+                            if filteredSuggestions.isEmpty {
+                                Text("No matches found")
+                                    .foregroundColor(.gray)
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                VStack(spacing: 0) {
+                                    ForEach(filteredSuggestions) { person in
+                                        FriendRowView(
+                                            person: person,
+                                            isInYourFriends: false,
+                                            recentlyAdded: recentlyAdded,
+                                            mainYellow: mainYellow,
+                                            onAdd: {
+                                                // First animation - button changes
+                                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                                    addedFriends.insert(person.username)
+                                                    recentlyAdded = person.username
+                                                }
+                                                
+                                                // Delay before moving to Your Friends section
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                                        yourFriends.append(person)
+                                                        recentlyAdded = nil
+                                                        saveFriends()
+                                                    }
+                                                }
+                                            }
+                                        )
+                                        
+                                        if person.id != filteredSuggestions.last?.id {
+                                            Divider()
+                                                .padding(.horizontal)
+                                        }
+                                    }
+                                }
+                                .background(Color.white)
+                                .cornerRadius(20)
+                                .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                    .padding(.top, 16)
+                }
+            }
+            .background(Color(red: 1, green: 0.989, blue: 0.93).ignoresSafeArea())
+            .sheet(isPresented: $showFriendProfile) {
+                if let friend = selectedFriend {
+                    FriendProfileView(user: friend)
+                }
+            }
+            .alert("Remove Friend", isPresented: $showRemoveAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Remove", role: .destructive) {
+                    if let friend = friendToRemove {
+                        removeFriend(friend)
+                    }
+                }
+            } message: {
+                if let friend = friendToRemove {
+                    Text("Are you sure you want to remove \(friend.name) from your friends?")
+                }
+            }
+            .onAppear {
+                loadSavedFriends()
+            }
         }
-        .background(Color(red: 1, green: 0.989, blue: 0.93).ignoresSafeArea())
     }
 
     // MARK: - Header
@@ -25,7 +184,7 @@ struct AddFriendsView: View {
                 .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
 
             HStack {
-                Button("Cancel") {
+                Button("Back") {
                     dismiss()
                 }
                 .foregroundColor(.orange)
@@ -50,9 +209,16 @@ struct AddFriendsView: View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.gray)
-            Text("Search friends…")
-                .foregroundColor(.gray)
-            Spacer()
+            TextField("Search friends…", text: $searchText)
+                .foregroundColor(.black)
+            if !searchText.isEmpty {
+                Button(action: {
+                    searchText = ""
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.gray)
+                }
+            }
         }
         .padding()
         .background(Color(red: 0.95, green: 0.95, blue: 0.9))
@@ -60,43 +226,17 @@ struct AddFriendsView: View {
         .padding(.horizontal)
         .padding(.top, 8)
     }
+}
 
-    // MARK: - Title
-    private var findFriendsTitle: some View {
-        Text("Find Friends")
-            .font(.custom("Markazi Text", size: 28))
-            .bold()
-            .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0))
-            .padding(.horizontal)
-            .padding(.top, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - Suggested Friends List
-    private var suggestionsList: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    ForEach(sampleSuggestions.indices, id: \.self) { index in
-                        friendRow(person: sampleSuggestions[index])
-
-                        if index < sampleSuggestions.count - 1 {
-                            Divider()
-                                .padding(.horizontal)
-                                .background(Color.gray.opacity(0.2))
-                        }
-                    }
-                }
-                .background(Color.white)
-                .cornerRadius(20)
-                .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
-                .padding()
-            }
-        }
-    }
-
-    // MARK: - Row UI
-    private func friendRow(person: SuggestedUser) -> some View {
+struct FriendRowView: View {
+    let person: SuggestedUser
+    let isInYourFriends: Bool
+    let recentlyAdded: String?
+    let mainYellow: Color
+    var onTap: (() -> Void)?
+    var onAdd: (() -> Void)?
+    
+    var body: some View {
         HStack(alignment: .center, spacing: 12) {
             Circle()
                 .fill(Color.gray.opacity(0.3))
@@ -114,36 +254,49 @@ struct AddFriendsView: View {
                 Text(person.source)
                     .font(.caption2)
                     .foregroundColor(.gray)
+                
+                if person.mutualFriends > 0 {
+                    Text("\(person.mutualFriends) mutual friend\(person.mutualFriends > 1 ? "s" : "")")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
             }
             .padding(.vertical, 4)
 
             Spacer()
 
-            Button(action: {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-                    if addedFriends.contains(person.username) {
-                        addedFriends.remove(person.username)
-                    } else {
-                        addedFriends.insert(person.username)
+            if !isInYourFriends {
+                Button(action: {
+                    onAdd?()
+                }) {
+                    HStack(spacing: 4) {
+                        Text(recentlyAdded == person.username ? "Added" : "Add Friend")
+                            .foregroundColor(recentlyAdded == person.username ? .black : .white)
+                        Image(systemName: recentlyAdded == person.username ? "checkmark" : "person.badge.plus")
+                            .foregroundColor(recentlyAdded == person.username ? .black : .white)
                     }
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(recentlyAdded == person.username ? mainYellow : Color.blue)
+                    )
+                    .scaleEffect(recentlyAdded == person.username ? 0.95 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: recentlyAdded == person.username)
                 }
-            }) {
-                HStack(spacing: 4) {
-                    Text(addedFriends.contains(person.username) ? "Added" : "Add Friend")
-                    Image(systemName: addedFriends.contains(person.username) ? "checkmark" : "person.badge.plus")
-                }
-                .font(.system(size: 14, weight: .semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(addedFriends.contains(person.username) ? mainYellow : Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-                .scaleEffect(addedFriends.contains(person.username) ? 0.95 : 1.0)
+                .buttonStyle(PlainButtonStyle())
+                .disabled(recentlyAdded == person.username)
             }
-            .buttonStyle(PlainButtonStyle())
         }
         .padding(.vertical, 12)
         .padding(.horizontal)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isInYourFriends {
+                onTap?()
+            }
+        }
     }
 }
 

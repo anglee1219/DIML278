@@ -2,14 +2,19 @@ import SwiftUI
 
 @main
 struct test2App: App {
-    init() {
-        // FOR TESTING: Reset login state on launch
-        UserDefaults.standard.set(false, forKey: "isLoggedIn")
-    }
-
+    @StateObject private var authManager = AuthenticationManager.shared
+    
     var body: some Scene {
         WindowGroup {
-            RootView()
+            if authManager.isAuthenticated {
+                NavigationView {
+                    MainTabView(currentTab: .home)
+                }
+            } else {
+                NavigationView {
+                    LoginScreen()
+                }
+            }
         }
     }
 }

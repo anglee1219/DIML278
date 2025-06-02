@@ -108,6 +108,7 @@ struct CreateAccountView: View {
             }
             .padding(.horizontal, 30)
         }
+        .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
     }
 }

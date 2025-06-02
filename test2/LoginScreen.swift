@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct LoginScreen: View {
-    @AppStorage("isLoggedIn") var isLoggedIn: Bool = false
+    @StateObject private var authManager = AuthenticationManager.shared
     @StateObject private var store = EntryStore()
     @State private var emailOrPhone: String = ""
     @State private var password: String = ""
     @State private var isPressed = false
+    @State private var showCreateAccount = false
 
     var body: some View {
         ZStack {
@@ -57,11 +58,6 @@ struct LoginScreen: View {
                     }
                     .padding(.horizontal)
 
-                    // Navigation link triggered by login
-                    NavigationLink(destination: GroupListView(), isActive: $isLoggedIn) {
-                        EmptyView()
-                    }
-
                     // Login Button
                     Button(action: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -70,7 +66,18 @@ struct LoginScreen: View {
                         
                         // Delay the login action slightly for animation
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            isLoggedIn = true
+                            authManager.isAuthenticated = true
+                            
+                            // Switch to MainTabView
+                            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                               let window = windowScene.windows.first {
+                                window.rootViewController = UIHostingController(rootView: 
+                                    NavigationView {
+                                        MainTabView(currentTab: .home)
+                                    }
+                                )
+                            }
+                            
                             isPressed = false
                         }
                     }) {

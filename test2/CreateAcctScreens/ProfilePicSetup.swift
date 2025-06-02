@@ -7,6 +7,8 @@ struct ProfilePhotoUploadView: View {
     @State private var useCamera = false
     @State private var goToNextScreen = false
     @State private var goToPreviousScreen = false
+    @State private var showCropPreview = false
+    @State private var pendingProfileImage: UIImage?
 
     var body: some View {
         ZStack {
@@ -87,14 +89,50 @@ struct ProfilePhotoUploadView: View {
             }
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(image: Binding(
-                    get: { image },
-                    set: { newImage in
-                        image = newImage
+                    get: { pendingProfileImage },
+                    set: { if let image = $0 {
+                        pendingProfileImage = image
+                        showCropPreview = true
                     }
-                ))
+                }))
+            }
+            .sheet(isPresented: $showCropPreview) {
+                if let previewImage = pendingProfileImage {
+                    if #available(iOS 16.0, *) {
+                        VStack(spacing: 24) {
+                            Text("Adjust Your Photo")
+                                .font(.title2)
+                                .padding(.top)
+                            
+                            GeometryReader { geometry in
+                                ImageAdjustmentView(image: previewImage) { adjustedImage in
+                                    image = adjustedImage
+                                    pendingProfileImage = nil
+                                    showCropPreview = false
+                                }
+                            }
+                            .aspectRatio(1, contentMode: .fit)
+                            .padding(.horizontal)
+                            
+                            Text("Pinch to zoom • Drag to adjust")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                            
+                            Button("Cancel") {
+                                pendingProfileImage = nil
+                                showCropPreview = false
+                            }
+                            .foregroundColor(.red)
+                            .padding(.bottom)
+                        }
+                        .padding()
+                        .presentationDetents([.height(600)])
+                        .background(Color(red: 1, green: 0.989, blue: 0.93))
+                    }
+                }
             }
         }
-        .navigationBarBackButtonHidden(true) // ← Hides default back arrow
+        .navigationBarBackButtonHidden(true)
     }
 }
 

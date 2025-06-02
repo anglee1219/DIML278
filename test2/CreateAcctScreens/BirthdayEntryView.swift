@@ -1,98 +1,98 @@
 import SwiftUI
 
 struct BirthdayEntryView: View {
+    @StateObject private var viewModel = ProfileViewModel.shared
     @State private var selectedDate = Date()
-    @State private var showDatePicker = false
-    @State private var navigateToBio = false
-    @State private var navigateToPronouns = false
-
-    var body: some View {
-        if #available(iOS 16.0, *) {
-            NavigationStack {
-                ZStack {
-                    Color(red: 1, green: 0.988, blue: 0.929)
-                        .ignoresSafeArea()
-
-                    VStack(spacing: 40) {
-                        Image("DIML_Logo")
-                            .resizable()
-                            .frame(width: 60, height: 60)
-
-                        Text("When Is Your Birthday?")
-                            .font(.custom("Markazi Text", size: 32))
-                            .fontWeight(.semibold)
-                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-
-                        Button(action: {
-                            showDatePicker = true
-                        }) {
-                            HStack(spacing: 12) {
-                                ForEach(formattedDateParts(), id: \.self) { part in
-                                    Text(part)
-                                        .frame(width: 60, height: 50)
-                                        .background(Color(red: 0.878, green: 0.878, blue: 0.78))
-                                        .cornerRadius(12)
-                                        .foregroundColor(.black)
-                                }
-                            }
-                        }
-
-                        Spacer()
-
-                        // Navigation Links
-                        NavigationLink(destination: BioEntryView(), isActive: $navigateToBio) { EmptyView() }
-                        NavigationLink(destination: PronounSelectionView(), isActive: $navigateToPronouns) { EmptyView() }
-
-                        // Navigation Arrows
-                        HStack {
-                            Button(action: {
-                                navigateToPronouns = true
-                            }) {
-                                Image(systemName: "arrow.left")
-                                    .font(.title2)
-                                    .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                            }
-
-                            Spacer()
-
-                            Button(action: {
-                                navigateToBio = true
-                            }) {
-                                Image(systemName: "arrow.right")
-                                    .font(.title2)
-                                    .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                            }
-                        }
-                        .padding(.horizontal, 30)
-                    }
-                    .padding(.top, 100)
-                    .padding(.horizontal)
-                    .sheet(isPresented: $showDatePicker) {
-                        VStack {
-                            DatePicker("Select your birthday", selection: $selectedDate, displayedComponents: [.date])
-                                .datePickerStyle(.wheel)
-                                .labelsHidden()
-                                .padding()
-
-                            Button("Done") {
-                                showDatePicker = false
-                            }
-                            .padding()
-                        }
-                        .presentationDetents([.medium])
-                    }
-                }
-                .navigationBarBackButtonHidden(true) // Hides default nav back button
-            }
-        } else {
-            Text("iOS 16 or later required.")
+    @State private var goToNextScreen = false
+    @State private var goToPreviousScreen = false
+    
+    private func calculateZodiacSign(from date: Date) -> String {
+        let calendar = Calendar.current
+        let month = calendar.component(.month, from: date)
+        let day = calendar.component(.day, from: date)
+        
+        switch (month, day) {
+        case (3, 21...31), (4, 1...19):
+            return "aries"
+        case (4, 20...30), (5, 1...20):
+            return "taurus"
+        case (5, 21...31), (6, 1...20):
+            return "gemini"
+        case (6, 21...30), (7, 1...22):
+            return "cancer"
+        case (7, 23...31), (8, 1...22):
+            return "leo"
+        case (8, 23...31), (9, 1...22):
+            return "virgo"
+        case (9, 23...30), (10, 1...22):
+            return "libra"
+        case (10, 23...31), (11, 1...21):
+            return "scorpio"
+        case (11, 22...30), (12, 1...21):
+            return "sagittarius"
+        case (12, 22...31), (1, 1...19):
+            return "capricorn"
+        case (1, 20...31), (2, 1...18):
+            return "aquarius"
+        case (2, 19...29), (3, 1...20):
+            return "pisces"
+        default:
+            return "unknown"
         }
     }
-
-    func formattedDateParts() -> [String] {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM dd yyyy"
-        return formatter.string(from: selectedDate).components(separatedBy: " ")
+    
+    var body: some View {
+        ZStack {
+            Color(red: 1, green: 0.988, blue: 0.929)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 40) {
+                Image("DIML_Logo")
+                    .resizable()
+                    .frame(width: 60, height: 60)
+                
+                Text("When's your birthday?")
+                    .font(.custom("Markazi Text", size: 32))
+                    .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                
+                DatePicker("Birthday", selection: $selectedDate, displayedComponents: .date)
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .onChange(of: selectedDate) { newDate in
+                        // Update the zodiac sign whenever the date changes
+                        viewModel.zodiac = calculateZodiacSign(from: newDate)
+                    }
+                
+                Spacer()
+                
+                // Forward arrow only
+                HStack {
+                    Spacer()
+                    
+                    Button(action: {
+                        // Ensure zodiac is set before proceeding
+                        viewModel.zodiac = calculateZodiacSign(from: selectedDate)
+                        goToNextScreen = true
+                    }) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 24))
+                            .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                    }
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 20)
+                
+                // Hidden NavLinks for navigation
+                NavigationLink(destination: BioEntryView(), isActive: $goToNextScreen) { EmptyView() }
+            }
+            .padding()
+        }
+        .navigationBarBackButtonHidden(true)
+        .navigationBarHidden(true)
+        .onAppear {
+            // Set initial zodiac sign
+            viewModel.zodiac = calculateZodiacSign(from: selectedDate)
+        }
     }
 }
 

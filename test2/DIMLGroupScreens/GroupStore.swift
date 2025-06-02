@@ -19,6 +19,7 @@ class GroupStore: ObservableObject {
     private func saveGroups() {
         if let encodedData = try? JSONEncoder().encode(groups) {
             userDefaults.set(encodedData, forKey: groupsKey)
+            userDefaults.synchronize() // Force immediate write to disk
         }
     }
     
@@ -37,6 +38,10 @@ class GroupStore: ObservableObject {
     func deleteGroup(_ group: Group) {
         groups.removeAll { $0.id == group.id }
         saveGroups()
+    }
+    
+    func leaveGroup(_ group: Group) {
+        deleteGroup(group)
     }
     
     func getGroup(withId id: String) -> Group? {

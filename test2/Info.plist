@@ -10,5 +10,9 @@
 		<string>Fredoka-Regular.ttf</string>
 		<string>Fredoka-Medium.ttf</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We need access to your microphone for voice search functionality.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>We need speech recognition access to convert your voice into search text.</string>
 </dict>
 </plist>

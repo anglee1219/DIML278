@@ -26,7 +26,13 @@ struct GroupViewWithCompletion: View {
                         User(id: UUID().uuidString, name: "Taylor")
                     ]
                     let influencerId = sampleUsers.randomElement()!.id
-                    let group = Group(id: UUID().uuidString, name: groupName, members: sampleUsers, currentInfluencerId: influencerId, date: Date())
+                    let group = Group(
+                        id: UUID().uuidString,
+                        name: groupName,
+                        members: sampleUsers,
+                        currentInfluencerId: influencerId,
+                        date: Date()
+                    )
                     currentGroup = group
                     joined = true
                 }

@@ -36,29 +36,105 @@
 }
 */
 import SwiftUI
-import AVFoundation
 
 struct GroupListView: View {
-    @State private var groups: [Group] = []
+    @StateObject private var groupStore = GroupStore()
     @State private var showingCreateGroup = false
     @State private var showingAddFriends = false
     @State private var showCamera = false
     @State private var showPermissionAlert = false
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
+    @State private var isRefreshing = false
+    @State private var groupToLeave: Group?
+    @State private var showLeaveConfirmation = false
+    @State private var selectedGroup: Group?
+    @State private var swipedGroupId: String?
+    @State private var offset: CGFloat = 0
+    @State private var isNavigating = false
     
-    func checkCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            showCamera = true
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    showCamera = granted
+    struct AnimatedMoonView: View {
+        @Binding var isRefreshing: Bool
+        @State private var moonOffset: CGFloat = 0
+        @State private var z1Offset: CGFloat = 0
+        @State private var z2Offset: CGFloat = 0
+        @State private var z3Offset: CGFloat = 0
+        @State private var moonScale: CGFloat = 1.0
+        
+        var body: some View {
+            Image(systemName: "moon.zzz")
+                .resizable()
+                .frame(width: 200, height: 225)
+                .foregroundColor(.gray.opacity(0.4))
+                .offset(y: moonOffset)
+                .scaleEffect(moonScale)
+                .onChange(of: isRefreshing) { isRefreshing in
+                    if isRefreshing {
+                        startAnimation()
+                    } else {
+                        stopAnimation()
+                    }
+                }
+        }
+        
+        private func startAnimation() {
+            // Continuous moon bounce and scale
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                moonOffset = -30  // More pronounced bounce
+                moonScale = 1.1   // Slight grow effect
+            }
+            
+            // Start Z animations
+            animateZs()
+        }
+        
+        private func stopAnimation() {
+            withAnimation(.easeInOut) {
+                moonOffset = 0
+                moonScale = 1.0
+                z1Offset = 0
+                z2Offset = 0
+                z3Offset = 0
+            }
+        }
+        
+        private func animateZs() {
+            guard isRefreshing else { return }
+            
+            // First Z - higher and with scale
+            withAnimation(.easeInOut(duration: 1.0)) {
+                z1Offset = -50
+            }
+            
+            // Second Z
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.easeInOut(duration: 1.0)) {
+                    z2Offset = -50
                 }
             }
-        default:
-            showPermissionAlert = true
+            
+            // Third Z
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                withAnimation(.easeInOut(duration: 1.0)) {
+                    z3Offset = -50
+                }
+            }
+            
+            // Reset and repeat with slight pause
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    z1Offset = 0
+                    z2Offset = 0
+                    z3Offset = 0
+                }
+                
+                // Continue if still refreshing with a slight pause
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    if isRefreshing {
+                        animateZs()
+                    }
+                }
+            }
         }
     }
     
@@ -99,9 +175,6 @@ struct GroupListView: View {
                         .padding(5)
                         .background(Color.gray.opacity(0.15))
                         .cornerRadius(6)
-                    
-                    Image(systemName: "mic.fill")
-                        .foregroundColor(.gray)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 10)
@@ -111,66 +184,181 @@ struct GroupListView: View {
                     .padding(.horizontal, 24)
                 
                 // Main Content
-                if groups.isEmpty {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "moon.zzz")
-                            .resizable()
-                            .frame(width: 200, height: 225)
-                            .foregroundColor(.gray.opacity(0.4))
+                ScrollView {
+                    RefreshableScrollView(onRefresh: { done in
+                        // Start refreshing
+                        isRefreshing = true
                         
-                        Text("You have no Circles.")
-                            .font(.custom("Fredoka-Regular", size: 22))
-                            .fontWeight(.bold)
-                            .foregroundColor(.black)
-                        
-                        Text("Tap the ⊕ in the upper right corner\nto create a Circle!")
-                            .multilineTextAlignment(.center)
-                            .font(.custom("Markazi Text", size: 18))
-                            .foregroundColor(.black)
-                    }
-                    Spacer()
-                } else {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            ForEach(groups) { group in
-                                NavigationLink(destination: GroupDetailView(group: group)) {
-                                    HStack(spacing: 12) {
-                                        HStack(spacing: -8) {
-                                            ForEach(0..<min(3, group.members.count), id: \.self) { _ in
-                                                Circle()
-                                                    .fill(Color.gray.opacity(0.3))
-                                                    .frame(width: 40, height: 40)
+                        // Simulate refresh delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            isRefreshing = false
+                            done()
+                        }
+                    }) {
+                        if groupStore.groups.isEmpty {
+                            VStack(spacing: 10) {
+                                AnimatedMoonView(isRefreshing: $isRefreshing)
+                                    .padding(.bottom, 20)
+                                
+                                Text("You have no Circles.")
+                                    .font(.custom("Fredoka-Regular", size: 22))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.black)
+                                
+                                Text("Tap the ⊕ in the upper right corner\nto create a Circle!")
+                                    .multilineTextAlignment(.center)
+                                    .font(.custom("Markazi Text", size: 18))
+                                    .foregroundColor(.black)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.top, 100)
+                        } else {
+                            VStack(spacing: 20) {
+                                ForEach(groupStore.groups) { group in
+                                    ZStack(alignment: .trailing) {
+                                        // Leave Button
+                                        Button {
+                                            groupToLeave = group
+                                            showLeaveConfirmation = true
+                                            withAnimation {
+                                                swipedGroupId = nil
+                                                offset = 0
+                                            }
+                                        } label: {
+                                            HStack {
+                                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                                Text("Leave")
+                                            }
+                                            .foregroundColor(.white)
+                                            .frame(width: 80, height: 70)
+                                            .background(Color.red)
+                                        }
+                                        .offset(x: swipedGroupId == group.id ? 0 : 80)
+                                        .opacity(swipedGroupId == group.id ? 1 : 0)
+                                        
+                                        // Main Content
+                                        HStack {
+                                            NavigationLink(
+                                                destination: GroupDetailView(group: group, groupStore: groupStore),
+                                                isActive: Binding(
+                                                    get: { selectedGroup?.id == group.id },
+                                                    set: { isActive in
+                                                        if !isActive {
+                                                            selectedGroup = nil
+                                                        }
+                                                    }
+                                                )
+                                            ) {
+                                                EmptyView()
+                                            }
+                                            .opacity(0)
+                                            
+                                            HStack(spacing: 12) {
+                                                HStack(spacing: -8) {
+                                                    ForEach(0..<min(3, group.members.count), id: \.self) { _ in
+                                                        Circle()
+                                                            .fill(Color.gray.opacity(0.3))
+                                                            .frame(width: 40, height: 40)
+                                                    }
+                                                }
+                                                
+                                                VStack(alignment: .leading) {
+                                                    Text(group.name)
+                                                        .font(.custom("Fredoka-Regular", size: 18))
+                                                        .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                                                    
+                                                    Text("Check out what's happening!")
+                                                        .font(.custom("Markazi Text", size: 16))
+                                                        .foregroundColor(.gray)
+                                                }
+                                                
+                                                Spacer()
+                                                
+                                                VStack(alignment: .trailing) {
+                                                    Text("10:28 PM")
+                                                        .font(.footnote)
+                                                        .foregroundColor(.gray)
+                                                    
+                                                    Image(systemName: "chevron.right")
+                                                        .foregroundColor(.gray.opacity(0.6))
+                                                }
+                                            }
+                                            .padding(.horizontal)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
+                                                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                                            )
+                                            .contentShape(Rectangle())
+                                            .onTapGesture {
+                                                if swipedGroupId == group.id {
+                                                    withAnimation {
+                                                        swipedGroupId = nil
+                                                        offset = 0
+                                                    }
+                                                } else {
+                                                    selectedGroup = group
+                                                }
                                             }
                                         }
-                                        
-                                        VStack(alignment: .leading) {
-                                            Text(group.name)
-                                                .font(.custom("Fredoka-Regular", size: 18))
-                                                .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                                            
-                                            Text("Check out what's happening!")
-                                                .font(.custom("Markazi Text", size: 16))
-                                                .foregroundColor(.gray)
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        VStack(alignment: .trailing) {
-                                            Text("10:28 PM")
-                                                .font(.footnote)
-                                                .foregroundColor(.gray)
-                                            
-                                            Image(systemName: "chevron.right")
-                                                .foregroundColor(.gray.opacity(0.6))
-                                        }
+                                        .offset(x: swipedGroupId == group.id ? -80 : 0)
+                                        .gesture(
+                                            DragGesture()
+                                                .onChanged { gesture in
+                                                    if gesture.translation.width < 0 {
+                                                        withAnimation {
+                                                            swipedGroupId = group.id
+                                                            offset = -80
+                                                        }
+                                                    } else if gesture.translation.width > 0 {
+                                                        withAnimation {
+                                                            swipedGroupId = nil
+                                                            offset = 0
+                                                        }
+                                                    }
+                                                }
+                                                .onEnded { _ in
+                                                    withAnimation {
+                                                        if offset < -40 {
+                                                            swipedGroupId = group.id
+                                                            offset = -80
+                                                        } else {
+                                                            swipedGroupId = nil
+                                                            offset = 0
+                                                        }
+                                                    }
+                                                }
+                                        )
                                     }
                                     .padding(.horizontal)
+                                    .background(Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                 }
                             }
+                            .padding(.top, 20)
                         }
-                        .padding(.top, 20)
                     }
+                }
+                .refreshable {
+                    isRefreshing = true
+                    // Add your refresh logic here
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        isRefreshing = false
+                    }
+                }
+                .confirmationDialog(
+                    "Leave Circle",
+                    isPresented: $showLeaveConfirmation,
+                    presenting: groupToLeave
+                ) { group in
+                    Button("Leave \(group.name)", role: .destructive) {
+                        withAnimation {
+                            groupStore.deleteGroup(group)
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: { group in
+                    Text("Are you sure you want to leave '\(group.name)'?\nYou'll need to be invited back to rejoin.")
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: isSearchFocused)
@@ -178,7 +366,7 @@ struct GroupListView: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $showingCreateGroup) {
                 CreateGroupView { newGroup in
-                    groups.append(newGroup)
+                    groupStore.addGroup(newGroup)
                 }
             }
             .sheet(isPresented: $showingAddFriends) {
@@ -213,6 +401,45 @@ struct GroupListView: View {
     }
 }
 
+// Custom RefreshableScrollView
+struct RefreshableScrollView<Content: View>: View {
+    let onRefresh: (@escaping () -> Void) -> Void
+    let content: Content
+    
+    init(onRefresh: @escaping (@escaping () -> Void) -> Void, @ViewBuilder content: () -> Content) {
+        self.onRefresh = onRefresh
+        self.content = content()
+    }
+    
+    var body: some View {
+        ScrollView {
+            GeometryReader { geometry in
+                let offset = geometry.frame(in: .global).minY
+                Color.clear.preference(key: ScrollViewOffsetPreferenceKey.self, value: offset)
+            }
+            .frame(height: 0)
+            .onPreferenceChange(ScrollViewOffsetPreferenceKey.self) { offset in
+                if offset > 70 {
+                    onRefresh {
+                        // Refresh complete
+                    }
+                }
+            }
+            
+            content
+        }
+    }
+}
+
+// Preference key for tracking scroll offset
+private struct ScrollViewOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+// MARK: - Preview
 struct GroupListView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationView {

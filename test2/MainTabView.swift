@@ -2,10 +2,14 @@ import SwiftUI
 import AVFoundation
 
 struct MainTabView: View {
-    @State private var currentTab: Tab = .home
+    @State private var currentTab: Tab
     @State private var showCamera = false
     @State private var showPermissionAlert = false
     @State private var keyboardVisible = false
+    
+    init(currentTab: Tab = .home) {
+        _currentTab = State(initialValue: currentTab)
+    }
 
     // Handle camera permission
     func checkCameraPermission() {

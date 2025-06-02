@@ -20,11 +20,11 @@
 		7D6537C32DE884CD00C7E795 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537C02DE884CD00C7E795 /* GroupListView.swift */; };
 		7D6537C42DE884CD00C7E795 /* GroupDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */; };
 		ED38CD9D2DE6B12D0076D908 /* LoginScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED38CD9C2DE6B1180076D908 /* LoginScreen.swift */; };
-		ED38CD9F2DE6B2430076D908 /* SignUpScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */; };
 		ED6680972DE999A2004E63A8 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6680962DE9999A004E63A8 /* MainTabView.swift */; };
 		ED98B0742DEAA45B00072A68 /* AddFriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */; };
 		ED98B07D2DEAD54700072A68 /* TopNavBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B07C2DEAD54300072A68 /* TopNavBar.swift */; };
 		ED98B0932DEB9E4D00072A68 /* GroupSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B0922DEB9E4500072A68 /* GroupSettingsView.swift */; };
+		EDB227422DED5DD1000DD9AA /* GroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDB227412DED5DD0000DD9AA /* GroupStore.swift */; };
 		EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1B2DE523B200C36E32 /* test2App.swift */; };
 		EDD7AA1E2DE523B200C36E32 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1D2DE523B200C36E32 /* ContentView.swift */; };
 		EDD7AA232DE523B400C36E32 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EDD7AA222DE523B400C36E32 /* Preview Assets.xcassets */; };
@@ -44,11 +44,11 @@
 		7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupDetailView.swift; sourceTree = "<group>"; };
 		7D6537C02DE884CD00C7E795 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
 		ED38CD9C2DE6B1180076D908 /* LoginScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginScreen.swift; sourceTree = "<group>"; };
-		ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpScreen.swift; sourceTree = "<group>"; };
 		ED6680962DE9999A004E63A8 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddFriendsView.swift; sourceTree = "<group>"; };
 		ED98B07C2DEAD54300072A68 /* TopNavBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopNavBar.swift; sourceTree = "<group>"; };
 		ED98B0922DEB9E4500072A68 /* GroupSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupSettingsView.swift; sourceTree = "<group>"; };
+		EDB227412DED5DD0000DD9AA /* GroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupStore.swift; sourceTree = "<group>"; };
 		EDD7AA182DE523B200C36E32 /* test2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = test2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDD7AA1B2DE523B200C36E32 /* test2App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = test2App.swift; sourceTree = "<group>"; };
 		EDD7AA1D2DE523B200C36E32 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -102,6 +102,7 @@
 				ED98B0922DEB9E4500072A68 /* GroupSettingsView.swift */,
 				ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */,
 				7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */,
+				EDB227412DED5DD0000DD9AA /* GroupStore.swift */,
 				7D6537BF2DE884CD00C7E795 /* GroupDetailView.swift */,
 				7D6537C02DE884CD00C7E795 /* GroupListView.swift */,
 			);
@@ -133,7 +134,6 @@
 				ED6680962DE9999A004E63A8 /* MainTabView.swift */,
 				EDEC5E0D2DE9750C006C06F3 /* Info.plist */,
 				EDCD70292DE96EC80000175E /* Resources */,
-				ED38CD9E2DE6B23C0076D908 /* SignUpScreen.swift */,
 				ED38CD9C2DE6B1180076D908 /* LoginScreen.swift */,
 				EDD7AA1B2DE523B200C36E32 /* test2App.swift */,
 				EDD7AA1D2DE523B200C36E32 /* ContentView.swift */,
@@ -228,6 +228,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EDD7AA1E2DE523B200C36E32 /* ContentView.swift in Sources */,
+				EDB227422DED5DD1000DD9AA /* GroupStore.swift in Sources */,
 				EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */,
 				ED38CD9D2DE6B12D0076D908 /* LoginScreen.swift in Sources */,
 				7D6537C22DE884CD00C7E795 /* CreateGroupView.swift in Sources */,
@@ -246,7 +247,6 @@
 				7D6537B22DE87D0300C7E795 /* ImagePicker.swift in Sources */,
 				7D6537B42DE87D0300C7E795 /* AddEntryView.swift in Sources */,
 				7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */,
-				ED38CD9F2DE6B2430076D908 /* SignUpScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

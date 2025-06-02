@@ -1,8 +1,9 @@
 import SwiftUI
 import AVFoundation
+import MapKit
 
 struct ProfileView: View {
-    @StateObject private var viewModel = ProfileViewModel()
+    @StateObject private var viewModel = ProfileViewModel.shared
     @State private var currentTab: Tab = .profile
     @State private var showCamera = false
     @State private var showPermissionAlert = false
@@ -10,6 +11,11 @@ struct ProfileView: View {
     @State private var isEditing = false
     @State private var showImagePicker = false
     @State private var showPhotoOptions = false
+    @State private var pendingProfileImage: UIImage? = nil
+    @State private var showCropPreview: Bool = false
+    @State private var keyboardVisible = false
+    @Environment(\.presentationMode) var presentationMode
+
     @FocusState private var focusedField: String?
     
     let profileImageSize: CGFloat = 120
@@ -40,7 +46,6 @@ struct ProfileView: View {
 
     var body: some View {
         ZStack {
-            // Main Profile View
             VStack(spacing: 0) {
                 TopNavBar(showsMenu: true) {
                     showSettings = true
@@ -114,6 +119,12 @@ struct ProfileView: View {
                             .font(.system(size: 32, weight: .bold))
                             .padding(.top, 8)
                         
+                        // Username
+                        Text(viewModel.username)
+                            .font(.system(size: 16))
+                            .foregroundColor(.black.opacity(0.6))
+                            .padding(.bottom, 4)
+                        
                         // Pronouns and Sign
                         Text("\(viewModel.pronouns) || \(viewModel.zodiac)")
                             .font(.system(size: 16))
@@ -121,8 +132,12 @@ struct ProfileView: View {
                         
                         // Info Section
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("location: \(viewModel.location)")
-                            Text("school: \(viewModel.school)")
+                            if viewModel.showLocation {
+                                Text("location: \(viewModel.location)")
+                            }
+                            if viewModel.showSchool {
+                                Text("school: \(viewModel.school)")
+                            }
                             Text("interests: \(viewModel.interests)")
                         }
                         .font(.system(size: 16))
@@ -142,8 +157,6 @@ struct ProfileView: View {
                                 Text("Edit Profile")
                                     .font(.system(size: 18))
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 18))
                             }
                             .foregroundColor(.white)
                             .padding(.horizontal, 20)
@@ -175,6 +188,32 @@ struct ProfileView: View {
                         }
                         
                         Spacer(minLength: 80)
+                    }
+                }
+                
+                if !keyboardVisible {
+                    BottomNavBar(currentTab: $currentTab) {
+                        checkCameraPermission()
+                    }
+                    .onChange(of: currentTab) { newTab in
+                        switch newTab {
+                        case .home:
+                            // Switch to main tab view with home selected and proper navigation
+                            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                               let window = windowScene.windows.first {
+                                window.rootViewController = UIHostingController(rootView: 
+                                    NavigationView {
+                                        MainTabView(currentTab: .home)
+                                    }
+                                )
+                            }
+                        case .profile:
+                            // Already on profile
+                            break
+                        case .camera:
+                            // Camera is handled by onCameraTap
+                            break
+                        }
                     }
                 }
             }
@@ -232,7 +271,7 @@ struct ProfileView: View {
                         .zIndex(1)
                         
                         // Edit Form
-                        editForm
+                        EditProfileSheet(viewModel: viewModel, isPresented: $isEditing)
                     }
                     .frame(width: geometry.size.width)
                     .position(x: geometry.size.width/2, y: geometry.size.height * 0.7)
@@ -260,10 +299,49 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(image: Binding(
-                get: { viewModel.profileImage },
-                set: { if let image = $0 { viewModel.updateProfileImage(image) } }
-            ))
+                get: { pendingProfileImage },
+                set: { if let image = $0 { pendingProfileImage = image
+                    showCropPreview = true
+                }
+            }
+        ))
+    }
+        .sheet(isPresented: $showCropPreview) {
+            if let previewImage = pendingProfileImage {
+                if #available(iOS 16.0, *) {
+                    VStack(spacing: 24) {
+                        Text("Adjust Your Photo")
+                            .font(.title2)
+                            .padding(.top)
+                        
+                        GeometryReader { geometry in
+                            ImageAdjustmentView(image: previewImage) { adjustedImage in
+                                viewModel.updateProfileImage(adjustedImage)
+                                pendingProfileImage = nil
+                                showCropPreview = false
+                            }
+                        }
+                        .aspectRatio(1, contentMode: .fit)
+                        .padding(.horizontal)
+                        
+                        Text("Pinch to zoom • Drag to adjust")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                        
+                        Button("Cancel") {
+                            pendingProfileImage = nil
+                            showCropPreview = false
+                        }
+                        .foregroundColor(.red)
+                        .padding(.bottom)
+                    }
+                    .padding()
+                    .presentationDetents([.height(600)])
+                    .background(Color(red: 1, green: 0.989, blue: 0.93))
+                }
+            }
         }
+
         .sheet(isPresented: $showSettings) {
             ProfileSettingsView()
         }
@@ -279,6 +357,19 @@ struct ProfileView: View {
                 secondaryButton: .cancel()
             )
         }
+        .onAppear {
+            // Setup keyboard notifications
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in
+                withAnimation {
+                    keyboardVisible = true
+                }
+            }
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
+                withAnimation {
+                    keyboardVisible = false
+                }
+            }
+        }
     }
     
     private func hideKeyboard() {
@@ -286,7 +377,7 @@ struct ProfileView: View {
     }
     
     private var editForm: some View {
-        VStack {
+        VStack(spacing: 0) {
             // Header
             HStack {
                 Button("Cancel") {
@@ -314,9 +405,11 @@ struct ProfileView: View {
                 .font(.system(size: 32, weight: .bold))
                 .padding(.vertical, 24)
             
-            ScrollView {
+            ScrollView(showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 24) {
                     ProfileField(title: "name", text: $viewModel.name)
+                    
+                    ProfileField(title: "username", text: $viewModel.username)
                     
                     // Custom Pronouns Menu
                     VStack(alignment: .leading, spacing: 4) {
@@ -355,6 +448,10 @@ struct ProfileView: View {
                     ProfileField(title: "location", text: $viewModel.location)
                     ProfileField(title: "school", text: $viewModel.school)
                     ProfileField(title: "interests", text: $viewModel.interests)
+                    
+                    // Add padding at the bottom to ensure last field is visible
+                    Spacer()
+                        .frame(height: 100)
                 }
                 .padding(.horizontal, 24)
             }
@@ -414,5 +511,333 @@ struct RoundedCorner: Shape {
 struct ProfileView_Previews: PreviewProvider {
     static var previews: some View {
         ProfileView()
+    }
+}
+
+// Add ImageAdjustmentView
+struct ImageAdjustmentView: View {
+    let image: UIImage
+    let onConfirm: (UIImage) -> Void
+    
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Background circle to show bounds
+                Circle()
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 2)
+                
+                // Image with gestures
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geometry.size.width, height: geometry.size.width)
+                    .scaleEffect(scale)
+                    .offset(offset)
+                    .gesture(
+                        SimultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    offset = CGSize(
+                                        width: lastOffset.width + value.translation.width,
+                                        height: lastOffset.height + value.translation.height
+                                    )
+                                }
+                                .onEnded { _ in
+                                    lastOffset = offset
+                                },
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let delta = value / lastScale
+                                    lastScale = value
+                                    scale *= delta
+                                }
+                                .onEnded { _ in
+                                    lastScale = 1.0
+                                }
+                        )
+                    )
+                    .clipShape(Circle())
+                    .onChange(of: scale) { _ in
+                        // Ensure minimum zoom level
+                        if scale < 1.0 {
+                            scale = 1.0
+                        }
+                    }
+                
+                // Confirm button overlay
+                VStack {
+                    Spacer()
+                    Button("Set Photo") {
+                        let size = CGSize(width: geometry.size.width, height: geometry.size.width)
+                        createAdjustedImage(size: size) { adjustedImage in
+                            if let adjustedImage = adjustedImage {
+                                onConfirm(adjustedImage)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 20)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .padding(.bottom)
+                }
+            }
+        }
+    }
+    
+    private func createAdjustedImage(size: CGSize, completion: @escaping (UIImage?) -> Void) {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let adjustedImage = renderer.image { context in
+            // Create circular clipping path
+            let circlePath = UIBezierPath(ovalIn: CGRect(origin: .zero, size: size))
+            circlePath.addClip()
+            
+            // Calculate the scaled image size while maintaining aspect ratio
+            let imageAspect = image.size.width / image.size.height
+            let viewAspect = size.width / size.height
+            
+            var drawSize = size
+            if imageAspect > viewAspect {
+                drawSize.width = size.height * imageAspect
+            } else {
+                drawSize.height = size.width / imageAspect
+            }
+            
+            // Apply scale
+            drawSize.width *= scale
+            drawSize.height *= scale
+            
+            // Center the image and apply offset
+            let drawPoint = CGPoint(
+                x: (size.width - drawSize.width) * 0.5 + offset.width,
+                y: (size.height - drawSize.height) * 0.5 + offset.height
+            )
+            
+            // Draw the image
+            image.draw(in: CGRect(origin: drawPoint, size: drawSize))
+        }
+        completion(adjustedImage)
+    }
+}
+
+// Add LocationSearchField
+struct LocationSearchField: View {
+    @Binding var text: String
+    @State private var searchText = ""
+    @State private var locations: [String] = []
+    @State private var isSearching = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("location:")
+                .font(.system(size: 16))
+                .foregroundColor(.black)
+            
+            ZStack(alignment: .leading) {
+                if searchText.isEmpty {
+                    Text("city, state")
+                        .font(.system(size: 16))
+                        .foregroundColor(.gray)
+                }
+                
+                TextField("", text: $searchText)
+                    .font(.system(size: 16))
+                    .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                    .tint(Color(red: 0.722, green: 0.369, blue: 0))
+                    .textFieldStyle(.plain)
+                    .autocapitalization(.words)
+                    .onChange(of: searchText) { newValue in
+                        if !newValue.isEmpty {
+                            searchLocations(query: newValue)
+                        } else {
+                            locations.removeAll()
+                            isSearching = false
+                        }
+                    }
+                    .onAppear {
+                        searchText = text
+                    }
+            }
+            .padding(.vertical, 8)
+            
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0).opacity(0.4))
+            
+            if !locations.isEmpty && isSearching {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(locations, id: \.self) { location in
+                        Button(action: {
+                            text = location
+                            searchText = location
+                            isSearching = false
+                            locations.removeAll()
+                        }) {
+                            Text(location)
+                                .font(.system(size: 16))
+                                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
+                                .background(Color.white)
+                        }
+                        
+                        if location != locations.last {
+                            Divider()
+                                .padding(.horizontal, 16)
+                        }
+                    }
+                }
+                .background(Color.white)
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+            }
+        }
+    }
+    
+    private func searchLocations(query: String) {
+        isSearching = true
+        
+        let searchRequest = MKLocalSearch.Request()
+        searchRequest.naturalLanguageQuery = query
+        searchRequest.resultTypes = .address
+        
+        let search = MKLocalSearch(request: searchRequest)
+        search.start { response, error in
+            guard let response = response else {
+                DispatchQueue.main.async {
+                    locations.removeAll()
+                    isSearching = false
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                let filteredLocations = response.mapItems
+                    .compactMap { item -> String? in
+                        guard let city = item.placemark.locality,
+                              let state = item.placemark.administrativeArea else {
+                            return nil
+                        }
+                        return "\(city), \(state)"
+                    }
+                    .removingDuplicates()
+                    .sorted()
+                    .prefix(5)
+                
+                locations = Array(filteredLocations)
+                
+                if locations.isEmpty {
+                    isSearching = false
+                }
+            }
+        }
+    }
+}
+
+extension Array where Element: Hashable {
+    func removingDuplicates() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
+    }
+}
+
+// Update EditProfileSheet to use LocationSearchField
+struct EditProfileSheet: View {
+    @ObservedObject var viewModel: ProfileViewModel
+    @Binding var isPresented: Bool
+    @FocusState private var focusedField: String?
+    
+    let pronounOptions = [
+        "she/her",
+        "he/him",
+        "they/them",
+        "other",
+        "prefer not to answer"
+    ]
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    ProfileField(title: "name", text: $viewModel.name)
+                    
+                    ProfileField(title: "username", text: $viewModel.username)
+                    
+                    // Custom Pronouns Menu
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("pronouns:")
+                            .font(.system(size: 16))
+                            .foregroundColor(.black)
+                        Menu {
+                            ForEach(pronounOptions, id: \.self) { option in
+                                Button(action: {
+                                    viewModel.pronouns = option
+                                }) {
+                                    Text(option)
+                                        .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(viewModel.pronouns)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                            }
+                        }
+                        .padding(.bottom, 4)
+                        .overlay(
+                            Rectangle()
+                                .frame(height: 1)
+                                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0).opacity(0.4)),
+                            alignment: .bottom
+                        )
+                    }
+                    
+                    ProfileField(title: "zodiac sign", text: $viewModel.zodiac)
+                    LocationSearchField(text: $viewModel.location)
+                    ProfileField(title: "school", text: $viewModel.school)
+                    ProfileField(title: "interests", text: $viewModel.interests)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                
+                // Add generous bottom spacing to ensure last item is visible
+                Spacer(minLength: UIScreen.main.bounds.height * 0.3)
+            }
+            .background(Color(red: 1, green: 0.988, blue: 0.929))
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        // The @Published property wrapper in ProfileViewModel will automatically
+                        // trigger the save when any field changes, so we just need to close the sheet
+                        isPresented = false
+                    }
+                    .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                }
+            }
+        }
     }
 }
