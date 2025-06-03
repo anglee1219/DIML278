@@ -36,19 +36,28 @@ class FriendsManager: ObservableObject {
         
         // Fetch suggested users (users who are not friends)
         db.collection("users")
-            .whereField("id", isNotEqualTo: currentUserId)
             .limit(to: 20)
             .getDocuments { [weak self] snapshot, error in
                 guard let self = self, let snapshot = snapshot else { return }
                 
+                let currentFriendIds = Set(self.friends.map { $0.id })
                 let users = snapshot.documents.compactMap { document -> User? in
-                    try? document.data(as: User.self)
+                    let data = document.data()
+                    let userId = document.documentID
+                    
+                    // Skip current user and existing friends
+                    guard userId != currentUserId && !currentFriendIds.contains(userId) else { return nil }
+                    
+                    return User(
+                        id: userId,
+                        name: data["name"] as? String ?? data["username"] as? String ?? "",
+                        username: data["username"] as? String,
+                        role: .member
+                    )
                 }
                 
                 DispatchQueue.main.async {
-                    self.suggestedUsers = users.filter { user in
-                        !self.friends.contains(where: { $0.id == user.id })
-                    }
+                    self.suggestedUsers = users
                 }
             }
         
@@ -68,8 +77,13 @@ class FriendsManager: ObservableObject {
             group.enter()
             db.collection("users").document(userId).getDocument { document, error in
                 defer { group.leave() }
-                if let document = document,
-                   let user = try? document.data(as: User.self) {
+                if let document = document, let data = document.data() {
+                    let user = User(
+                        id: userId,
+                        name: data["name"] as? String ?? data["username"] as? String ?? "",
+                        username: data["username"] as? String,
+                        role: .member
+                    )
                     users.append(user)
                 }
             }
@@ -83,14 +97,28 @@ class FriendsManager: ObservableObject {
     func sendFriendRequest(to userId: String) {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return }
         
-        let requestData: [String: Any] = [
-            "status": "pending",
-            "timestamp": FieldValue.serverTimestamp()
-        ]
-        
-        db.collection("users").document(userId)
-            .collection("friendRequests").document(currentUserId)
-            .setData(requestData)
+        // Get current user's profile data
+        db.collection("users").document(currentUserId).getDocument { [weak self] document, error in
+            guard let data = document?.data() else { return }
+            
+            let requestData: [String: Any] = [
+                "status": "pending",
+                "timestamp": FieldValue.serverTimestamp(),
+                "fromUserId": currentUserId,
+                "fromUserName": data["name"] as? String ?? data["username"] as? String ?? "",
+                "fromUserUsername": data["username"] as? String ?? ""
+            ]
+            
+            // Add to target user's friend requests
+            self?.db.collection("users").document(userId)
+                .collection("friendRequests").document(currentUserId)
+                .setData(requestData)
+            
+            // Add to current user's sent requests
+            self?.db.collection("users").document(currentUserId)
+                .collection("sentRequests").document(userId)
+                .setData(requestData)
+        }
     }
     
     func removeFriend(_ friendId: String) {

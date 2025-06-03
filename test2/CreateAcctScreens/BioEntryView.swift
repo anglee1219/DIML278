@@ -42,14 +42,6 @@ struct BioEntryView: View {
         UserDefaults.standard.set(viewModel.school, forKey: "profile_school")
         UserDefaults.standard.set(viewModel.interests, forKey: "profile_interests")
         
-        // Update ProfileViewModel directly
-        viewModel.name = name
-        viewModel.username = username
-        viewModel.zodiac = zodiacSign
-        viewModel.location = viewModel.location
-        viewModel.school = viewModel.school
-        viewModel.interests = viewModel.interests
-        
         // Create profile data dictionary
         let profileData: [String: Any] = [
             "uid": currentUser.uid,
@@ -92,9 +84,6 @@ struct BioEntryView: View {
                             self.authManager.isCompletingProfile = false
                             self.authManager.isAuthenticated = true
                         }
-                        
-                        // Trigger a profile reload to ensure all data is up to date
-                        self.viewModel.loadUserProfile()
                         
                     case .failure(let error):
                         print("Failed to complete sign up: \(error.localizedDescription)")
