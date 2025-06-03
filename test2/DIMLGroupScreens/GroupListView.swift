@@ -179,6 +179,20 @@ struct GroupListView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 10)
                 
+                // Test Button
+                Button("Test Prompt System") {
+                    // Test the prompt loading and selection
+                    PromptManager.shared.testPromptSystem()
+                    
+                    // Test the scheduler
+                    PromptScheduler.shared.testScheduler()
+                }
+                .padding()
+                .background(Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(10)
+                .padding(.top, 10)
+
                 Divider()
                     .padding(.top, 10)
                     .padding(.horizontal, 24)

@@ -14,6 +14,19 @@ struct ContentView: View {
                 .imageScale(.large)
                 .foregroundColor(.accentColor)
             Text("Hello, world!")
+            
+            // Add test button
+            Button("Test Prompt System") {
+                // Test the prompt loading and selection
+                PromptManager.shared.testPromptSystem()
+                
+                // Test the scheduler
+                PromptScheduler.shared.testScheduler()
+            }
+            .padding()
+            .background(Color.blue)
+            .foregroundColor(.white)
+            .cornerRadius(10)
         }
         .padding()
     }

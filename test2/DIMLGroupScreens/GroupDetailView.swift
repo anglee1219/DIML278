@@ -150,6 +150,16 @@ struct GroupDetailView: View {
                             .background(Color(red: 0.94, green: 0.93, blue: 0.88))
                             .cornerRadius(16)
                             .padding(.horizontal)
+                            .sheet(isPresented: $showAddEntry) {
+                                AddEntryView(store: store, onComplete: { entry in
+                                    // After successfully adding an entry, notify group members
+                                    PromptScheduler.shared.notifyGroupMembers(
+                                        groupId: group.id,
+                                        influencerName: currentUser.name,
+                                        members: group.members.filter { $0.id != currentUser.id }
+                                    )
+                                })
+                            }
                         } else {
                             // Message Box for non-Influencer
                             if let latestEntry = store.entries.first {
@@ -243,9 +253,6 @@ struct GroupDetailView: View {
                 print("Image captured")
             }
         }
-        .sheet(isPresented: $showAddEntry) {
-            AddEntryView(store: store)
-        }
         .sheet(isPresented: $showSettings) {
             GroupSettingsView(groupStore: groupStore, group: group)
         }
@@ -272,6 +279,14 @@ struct GroupDetailView: View {
                 withAnimation {
                     keyboardVisible = false
                 }
+            }
+
+            if isInfluencer {
+                // Schedule prompts only for the influencer
+                PromptScheduler.shared.schedulePrompts(
+                    for: .once, // You can adjust this based on user preferences
+                    influencerId: currentUser.id
+                )
             }
         }
     }

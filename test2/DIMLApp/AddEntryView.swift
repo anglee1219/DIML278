@@ -3,6 +3,7 @@ import SwiftUI
 struct AddEntryView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var store: EntryStore
+    var onComplete: ((DIMLEntry) -> Void)?
 
     @State private var prompt = ""
     @State private var response = ""
@@ -35,6 +36,9 @@ struct AddEntryView: View {
                 dismiss()
             }, trailing: Button("Save") {
                 store.addEntry(prompt: prompt, response: response, image: selectedImage)
+                if let entry = store.entries.first {
+                    onComplete?(entry)
+                }
                 dismiss()
             }.disabled(prompt.isEmpty || response.isEmpty))
             .sheet(isPresented: $showingImagePicker) {
