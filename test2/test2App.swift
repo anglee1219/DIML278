@@ -18,33 +18,25 @@ struct test2App: App {
     
     var body: some Scene {
         WindowGroup {
-            if authManager.isAuthenticated {
-                NavigationView {
-                    MainTabView(currentTab: .home)
-                }
-            } else if authManager.isCompletingProfile {
-                NavigationView {
-                    BuildProfileFlowView()
-                }
-            } else {
-                NavigationView {
-                    LoginScreen()
+            ZStack {
+                if authManager.isCompletingProfile {
+                    NavigationView {
+                        BuildProfileFlowView()
+                    }
+                } else if authManager.isAuthenticated {
+                    NavigationView {
+                        MainTabView(currentTab: .home)
+                    }
+                    .navigationViewStyle(StackNavigationViewStyle())
+                } else {
+                    NavigationView {
+                        LoginScreen()
+                    }
                 }
             }
-        }
-    }
-}
-
-struct RootView: View {
-    @AppStorage("isLoggedIn") private var isLoggedIn: Bool = false
-
-    var body: some View {
-        NavigationView {
-            if isLoggedIn {
-                MainTabView()
-            } else {
-                LoginScreen()
-            }
+            .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
+            .animation(.easeInOut(duration: 0.3), value: authManager.isCompletingProfile)
+            .environmentObject(authManager)
         }
     }
 }

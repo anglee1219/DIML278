@@ -6,6 +6,7 @@ import FirebaseAuth
 struct BioEntryView: View {
     @StateObject private var viewModel = ProfileViewModel.shared
     @StateObject private var authManager = AuthenticationManager.shared
+    @Environment(\.dismiss) private var dismiss
     @State private var showLocationSearch = false
     @State private var navigateToNext = false
     @State private var navigateBack = false
@@ -22,39 +23,62 @@ struct BioEntryView: View {
         
         isLoading = true
         
-        // Get the zodiac sign from UserDefaults
+        // Get stored credentials and user data
+        guard let email = UserDefaults.standard.string(forKey: "pending_email"),
+              let password = UserDefaults.standard.string(forKey: "pending_password") else {
+            alertMessage = "Missing credentials. Please try creating your account again."
+            showAlert = true
+            isLoading = false
+            return
+        }
+        
+        // Get the zodiac sign and username from UserDefaults
         let zodiacSign = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
         let username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+        let name = UserDefaults.standard.string(forKey: "profile_name") ?? username
         
         // Create profile data dictionary
         let profileData: [String: Any] = [
+            "uid": currentUser.uid,
+            "email": email,
             "username": username,
+            "name": name,
             "location": viewModel.location,
             "school": viewModel.school,
             "interests": viewModel.interests,
             "zodiacSign": zodiacSign,
-            "createdAt": FieldValue.serverTimestamp()
+            "createdAt": FieldValue.serverTimestamp(),
+            "lastUpdated": FieldValue.serverTimestamp()
         ]
         
-        // Save to Firestore
+        // Save to Firestore using setData with merge
         let db = Firestore.firestore()
         db.collection("users").document(currentUser.uid).setData(profileData, merge: true) { error in
-            DispatchQueue.main.async {
-                isLoading = false
-                
-                if let error = error {
-                    alertMessage = "Error saving profile: \(error.localizedDescription)"
+            if let error = error {
+                DispatchQueue.main.async {
+                    alertMessage = error.localizedDescription
                     showAlert = true
-                } else {
-                    // Complete the profile setup
-                    authManager.completeSignUp { result in
-                        switch result {
-                        case .success:
-                            print("Successfully completed sign up")
-                        case .failure(let error):
-                            alertMessage = "Error completing sign up: \(error.localizedDescription)"
-                            showAlert = true
-                        }
+                    isLoading = false
+                }
+                return
+            }
+            
+            print("Successfully saved profile data to Firestore")
+            // Complete the sign up process
+            authManager.completeSignUp { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        print("Successfully completed sign up")
+                        isLoading = false
+                        // Reset the completion flag to trigger app state change
+                        authManager.isCompletingProfile = false
+                        authManager.isAuthenticated = true
+                    case .failure(let error):
+                        print("Failed to complete sign up: \(error.localizedDescription)")
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                        isLoading = false
                     }
                 }
             }

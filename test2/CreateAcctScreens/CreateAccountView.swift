@@ -163,11 +163,13 @@ struct CreateAccountView: View {
                                         // Store additional info in UserDefaults
                                         UserDefaults.standard.set(account.username, forKey: "profile_username")
                                         UserDefaults.standard.set(account.username, forKey: "profile_name")
+                                        UserDefaults.standard.set(account.email, forKey: "pending_email")
+                                        UserDefaults.standard.set(account.password, forKey: "pending_password")
                                 
-                                // Navigate to next screen
+                                        // Navigate to next screen
                                         DispatchQueue.main.async {
-                                isLoading = false
-                                navigateToNext = true
+                                            isLoading = false
+                                            navigateToNext = true
                                         }
                                         
                                     case .failure(let error):
