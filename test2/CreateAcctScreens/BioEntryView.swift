@@ -37,6 +37,19 @@ struct BioEntryView: View {
         let username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
         let name = UserDefaults.standard.string(forKey: "profile_name") ?? username
         
+        // Save current profile data to UserDefaults
+        UserDefaults.standard.set(viewModel.location, forKey: "profile_location")
+        UserDefaults.standard.set(viewModel.school, forKey: "profile_school")
+        UserDefaults.standard.set(viewModel.interests, forKey: "profile_interests")
+        
+        // Update ProfileViewModel directly
+        viewModel.name = name
+        viewModel.username = username
+        viewModel.zodiac = zodiacSign
+        viewModel.location = viewModel.location
+        viewModel.school = viewModel.school
+        viewModel.interests = viewModel.interests
+        
         // Create profile data dictionary
         let profileData: [String: Any] = [
             "uid": currentUser.uid,
@@ -48,7 +61,8 @@ struct BioEntryView: View {
             "interests": viewModel.interests,
             "zodiacSign": zodiacSign,
             "createdAt": FieldValue.serverTimestamp(),
-            "lastUpdated": FieldValue.serverTimestamp()
+            "lastUpdated": FieldValue.serverTimestamp(),
+            "profileCompleted": true
         ]
         
         // Save to Firestore using setData with merge
@@ -56,29 +70,37 @@ struct BioEntryView: View {
         db.collection("users").document(currentUser.uid).setData(profileData, merge: true) { error in
             if let error = error {
                 DispatchQueue.main.async {
-                    alertMessage = error.localizedDescription
-                    showAlert = true
-                    isLoading = false
+                    self.alertMessage = error.localizedDescription
+                    self.showAlert = true
+                    self.isLoading = false
                 }
                 return
             }
             
             print("Successfully saved profile data to Firestore")
+            
             // Complete the sign up process
-            authManager.completeSignUp { result in
+            self.authManager.completeSignUp { result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
                         print("Successfully completed sign up")
-                        isLoading = false
-                        // Reset the completion flag to trigger app state change
-                        authManager.isCompletingProfile = false
-                        authManager.isAuthenticated = true
+                        // First set loading to false
+                        self.isLoading = false
+                        // Then update auth state
+                        withAnimation {
+                            self.authManager.isCompletingProfile = false
+                            self.authManager.isAuthenticated = true
+                        }
+                        
+                        // Trigger a profile reload to ensure all data is up to date
+                        self.viewModel.loadUserProfile()
+                        
                     case .failure(let error):
                         print("Failed to complete sign up: \(error.localizedDescription)")
-                        alertMessage = error.localizedDescription
-                        showAlert = true
-                        isLoading = false
+                        self.alertMessage = error.localizedDescription
+                        self.showAlert = true
+                        self.isLoading = false
                     }
                 }
             }

@@ -75,6 +75,10 @@ class ProfileViewModel: ObservableObject {
     }
     
     init() {
+        // Load initial data from UserDefaults first
+        loadInitialData()
+        
+        // Then load from Firestore
         loadUserProfile()
         
         // Set up Auth state listener
@@ -87,7 +91,24 @@ class ProfileViewModel: ObservableObject {
         }
     }
     
-    private func loadUserProfile() {
+    private func loadInitialData() {
+        // Load initial data from UserDefaults
+        self.name = UserDefaults.standard.string(forKey: "profile_name") ?? ""
+        self.username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+        self.pronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
+        self.zodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+        self.location = UserDefaults.standard.string(forKey: "profile_location") ?? ""
+        self.school = UserDefaults.standard.string(forKey: "profile_school") ?? ""
+        self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
+        self.showLocation = UserDefaults.standard.bool(forKey: "privacy_show_location")
+        self.showSchool = UserDefaults.standard.bool(forKey: "privacy_show_school")
+        
+        if let imageData = UserDefaults.standard.data(forKey: "profile_image") {
+            self.profileImageData = imageData
+        }
+    }
+    
+    func loadUserProfile() {
         guard let userId = Auth.auth().currentUser?.uid else {
             print("No authenticated user")
             return
@@ -107,10 +128,24 @@ class ProfileViewModel: ObservableObject {
             
             guard let document = document, document.exists, let data = document.data() else {
                 print("No profile document found")
+                // Try to load from UserDefaults as fallback
+                self?.loadFromUserDefaults()
                 return
             }
             
             DispatchQueue.main.async {
+                // Update UserDefaults with the latest data
+                UserDefaults.standard.set(data["name"] as? String ?? "", forKey: "profile_name")
+                UserDefaults.standard.set(data["username"] as? String ?? "", forKey: "profile_username")
+                UserDefaults.standard.set(data["pronouns"] as? String ?? "", forKey: "profile_pronouns")
+                UserDefaults.standard.set(data["zodiacSign"] as? String ?? "", forKey: "profile_zodiac")
+                UserDefaults.standard.set(data["location"] as? String ?? "", forKey: "profile_location")
+                UserDefaults.standard.set(data["school"] as? String ?? "", forKey: "profile_school")
+                UserDefaults.standard.set(data["interests"] as? String ?? "", forKey: "profile_interests")
+                UserDefaults.standard.set(data["showLocation"] as? Bool ?? true, forKey: "privacy_show_location")
+                UserDefaults.standard.set(data["showSchool"] as? Bool ?? true, forKey: "privacy_show_school")
+                
+                // Update the view model properties
                 self?.name = data["name"] as? String ?? ""
                 self?.username = data["username"] as? String ?? ""
                 self?.pronouns = data["pronouns"] as? String ?? ""
@@ -132,11 +167,30 @@ class ProfileViewModel: ObservableObject {
                         if let data = data {
                             DispatchQueue.main.async {
                                 self?.profileImageData = data
+                                // Cache the image data
+                                UserDefaults.standard.set(data, forKey: "profile_image")
                             }
                         }
                     }.resume()
                 }
             }
+        }
+    }
+    
+    private func loadFromUserDefaults() {
+        // Load from UserDefaults as fallback
+        self.name = UserDefaults.standard.string(forKey: "profile_name") ?? ""
+        self.username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+        self.pronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
+        self.zodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+        self.location = UserDefaults.standard.string(forKey: "profile_location") ?? ""
+        self.school = UserDefaults.standard.string(forKey: "profile_school") ?? ""
+        self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
+        self.showLocation = UserDefaults.standard.bool(forKey: "privacy_show_location")
+        self.showSchool = UserDefaults.standard.bool(forKey: "privacy_show_school")
+        
+        if let imageData = UserDefaults.standard.data(forKey: "profile_image") {
+            self.profileImageData = imageData
         }
     }
     
