@@ -21,6 +21,8 @@ class ProfileViewModel: ObservableObject {
     @Published var pronouns: String = "" {
         didSet {
             saveProfile()
+            // Also save to UserDefaults for immediate access
+            UserDefaults.standard.set(pronouns, forKey: "profile_pronouns")
         }
     }
     
@@ -75,6 +77,10 @@ class ProfileViewModel: ObservableObject {
     }
     
     init() {
+        // Set default values
+        showLocation = true
+        showSchool = true
+        
         // Load initial data from UserDefaults first
         loadInitialData()
         
@@ -100,8 +106,9 @@ class ProfileViewModel: ObservableObject {
         self.location = UserDefaults.standard.string(forKey: "profile_location") ?? ""
         self.school = UserDefaults.standard.string(forKey: "profile_school") ?? ""
         self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
-        self.showLocation = UserDefaults.standard.bool(forKey: "privacy_show_location")
-        self.showSchool = UserDefaults.standard.bool(forKey: "privacy_show_school")
+        // Always default to showing location and school
+        self.showLocation = true
+        self.showSchool = true
         
         if let imageData = UserDefaults.standard.data(forKey: "profile_image") {
             self.profileImageData = imageData
@@ -142,8 +149,6 @@ class ProfileViewModel: ObservableObject {
                 UserDefaults.standard.set(data["location"] as? String ?? "", forKey: "profile_location")
                 UserDefaults.standard.set(data["school"] as? String ?? "", forKey: "profile_school")
                 UserDefaults.standard.set(data["interests"] as? String ?? "", forKey: "profile_interests")
-                UserDefaults.standard.set(data["showLocation"] as? Bool ?? true, forKey: "privacy_show_location")
-                UserDefaults.standard.set(data["showSchool"] as? Bool ?? true, forKey: "privacy_show_school")
                 
                 // Update the view model properties
                 self?.name = data["name"] as? String ?? ""
@@ -153,6 +158,7 @@ class ProfileViewModel: ObservableObject {
                 self?.location = data["location"] as? String ?? ""
                 self?.school = data["school"] as? String ?? ""
                 self?.interests = data["interests"] as? String ?? ""
+                // Always default to showing location and school unless explicitly set to false
                 self?.showLocation = data["showLocation"] as? Bool ?? true
                 self?.showSchool = data["showSchool"] as? Bool ?? true
                 
@@ -186,8 +192,9 @@ class ProfileViewModel: ObservableObject {
         self.location = UserDefaults.standard.string(forKey: "profile_location") ?? ""
         self.school = UserDefaults.standard.string(forKey: "profile_school") ?? ""
         self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
-        self.showLocation = UserDefaults.standard.bool(forKey: "privacy_show_location")
-        self.showSchool = UserDefaults.standard.bool(forKey: "privacy_show_school")
+        // Always default to showing location and school
+        self.showLocation = true
+        self.showSchool = true
         
         if let imageData = UserDefaults.standard.data(forKey: "profile_image") {
             self.profileImageData = imageData

@@ -132,12 +132,12 @@ struct ProfileView: View {
                         
                         // Info Section
                         VStack(alignment: .leading, spacing: 8) {
-                            if viewModel.showLocation {
-                                Text("location: \(viewModel.location)")
-                            }
-                            if viewModel.showSchool {
-                                Text("school: \(viewModel.school)")
-                            }
+                            Text("location: \(viewModel.location)")
+                                .opacity(viewModel.showLocation ? 1 : 0)
+                                .animation(.easeInOut, value: viewModel.showLocation)
+                            Text("school: \(viewModel.school)")
+                                .opacity(viewModel.showSchool ? 1 : 0)
+                                .animation(.easeInOut, value: viewModel.showSchool)
                             Text("interests: \(viewModel.interests)")
                         }
                         .font(.system(size: 16))

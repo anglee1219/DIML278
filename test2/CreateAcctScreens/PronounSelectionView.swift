@@ -4,6 +4,7 @@ struct PronounSelectionView: View {
     @State private var selectedPronoun: String? = nil
     @State private var navigateToBirthday = false
     @State private var navigateBack = false
+    @StateObject private var profileViewModel = ProfileViewModel.shared
 
     let pronouns = [
         "she/her",
@@ -36,6 +37,9 @@ struct PronounSelectionView: View {
                     ForEach(pronouns, id: \.self) { pronoun in
                         Button(action: {
                             selectedPronoun = pronoun
+                            // Save to both UserDefaults and ProfileViewModel
+                            UserDefaults.standard.set(pronoun, forKey: "profile_pronouns")
+                            profileViewModel.pronouns = pronoun
                         }) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 15)
@@ -74,7 +78,10 @@ struct PronounSelectionView: View {
                     Spacer()
 
                     Button(action: {
-                        if selectedPronoun != nil {
+                        if let pronoun = selectedPronoun {
+                            // Save again before navigating to ensure it's saved
+                            UserDefaults.standard.set(pronoun, forKey: "profile_pronouns")
+                            profileViewModel.pronouns = pronoun
                             navigateToBirthday = true
                         }
                     }) {
@@ -88,6 +95,13 @@ struct PronounSelectionView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            // Load any previously saved pronoun
+            if let savedPronoun = UserDefaults.standard.string(forKey: "profile_pronouns") {
+                selectedPronoun = savedPronoun
+                profileViewModel.pronouns = savedPronoun
+            }
+        }
     }
 }
 
