@@ -1,108 +1,255 @@
 import SwiftUI
+import MapKit
+import FirebaseFirestore
+import FirebaseAuth
 
 struct BioEntryView: View {
     @StateObject private var viewModel = ProfileViewModel.shared
     @StateObject private var authManager = AuthenticationManager.shared
-    @State private var goToNextScreen = false
-    @State private var goToPreviousScreen = false
     @State private var showLocationSearch = false
+    @State private var navigateToNext = false
+    @State private var navigateBack = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+    @State private var isLoading = false
+    
+    private func saveProfileToFirebase() {
+        guard let currentUser = Auth.auth().currentUser else {
+            alertMessage = "No authenticated user found"
+            showAlert = true
+            return
+        }
+        
+        isLoading = true
+        
+        // Get the zodiac sign from UserDefaults
+        let zodiacSign = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+        let username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+        
+        // Create profile data dictionary
+        let profileData: [String: Any] = [
+            "username": username,
+            "location": viewModel.location,
+            "school": viewModel.school,
+            "interests": viewModel.interests,
+            "zodiacSign": zodiacSign,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+        
+        // Save to Firestore
+        let db = Firestore.firestore()
+        db.collection("users").document(currentUser.uid).setData(profileData, merge: true) { error in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                if let error = error {
+                    alertMessage = "Error saving profile: \(error.localizedDescription)"
+                    showAlert = true
+                } else {
+                    // Complete the profile setup
+                    authManager.completeSignUp { result in
+                        switch result {
+                        case .success:
+                            print("Successfully completed sign up")
+                        case .failure(let error):
+                            alertMessage = "Error completing sign up: \(error.localizedDescription)"
+                            showAlert = true
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     var body: some View {
         ZStack {
             Color(red: 1, green: 0.988, blue: 0.929)
                 .ignoresSafeArea()
             
-            VStack(spacing: 40) {
+            VStack(spacing: 24) {
+                // Logo at the top
                 Image("DIML_Logo")
                     .resizable()
                     .frame(width: 60, height: 60)
+                    .padding(.top, 40)
                 
-                VStack(spacing: 24) {
-                    Text("Tell us about yourself")
-                        .font(.custom("Markazi Text", size: 32))
-                        .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                    
-                    VStack(spacing: 24) {
-                        // Location Field
-                        LocationSearchField(text: $viewModel.location)
-                        
-                        // School Field
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("school:")
-                                .font(.system(size: 16))
-                                .foregroundColor(.black)
-                            
-                            TextField("", text: $viewModel.school)
-                                .font(.system(size: 16))
-                                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
-                                .tint(Color(red: 0.722, green: 0.369, blue: 0))
-                                .textFieldStyle(.plain)
-                                .padding(.vertical, 8)
-                            
-                            Rectangle()
-                                .frame(height: 1)
-                                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0).opacity(0.4))
-                        }
-                        .padding(.horizontal)
-                        
-                        // Interests Field
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("interests:")
-                                .font(.system(size: 16))
-                                .foregroundColor(.black)
-                            
-                            TextField("", text: $viewModel.interests)
-                                .font(.system(size: 16))
-                                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
-                                .tint(Color(red: 0.722, green: 0.369, blue: 0))
-                                .textFieldStyle(.plain)
-                                .padding(.vertical, 8)
-                            
-                            Rectangle()
-                                .frame(height: 1)
-                                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0).opacity(0.4))
-                        }
-                        .padding(.horizontal)
+                Text("Almost there!")
+                    .font(.custom("Markazi Text", size: 36))
+                    .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
+                
+                Text("Tell us a bit more about yourself")
+                    .font(.custom("Markazi Text", size: 24))
+                    .foregroundColor(.gray)
+                
+                // Location Button
+                Button(action: {
+                    showLocationSearch = true
+                }) {
+                    HStack {
+                        Image(systemName: "mappin.and.ellipse")
+                            .foregroundColor(.gray)
+                        Text(viewModel.location.isEmpty ? "Add your location" : viewModel.location)
+                            .foregroundColor(viewModel.location.isEmpty ? .gray : .black)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.gray)
                     }
+                    .padding()
+                    .background(Color.white)
+                    .cornerRadius(10)
+                    .shadow(color: .black.opacity(0.05), radius: 2)
                 }
+                .padding(.horizontal)
+                
+                // School TextField
+                TextField("School", text: $viewModel.school)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal)
+                
+                // Interests TextField
+                TextField("Interests (separated by commas)", text: $viewModel.interests)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal)
                 
                 Spacer()
                 
-                // Create Profile Button
-                Button(action: {
-                    // Set authentication state to true
-                    authManager.isAuthenticated = true
-                    
-                    // Switch to main tab view
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                       let window = windowScene.windows.first {
-                        window.rootViewController = UIHostingController(rootView: 
-                            NavigationView {
-                                MainTabView(currentTab: .home)
-                            }
-                        )
+                // Navigation Links
+                NavigationLink(destination: BirthdayEntryView(), isActive: $navigateBack) { EmptyView() }
+                
+                // Navigation arrows
+                HStack {
+                    Button(action: {
+                        navigateBack = true
+                    }) {
+                        Image(systemName: "arrow.left.circle.fill")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                            .foregroundColor(.gray)
                     }
-                }) {
-                    Text("Create Profile")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.mainBlue)
-                        .cornerRadius(12)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        saveProfileToFirebase()
+                    }) {
+                        if isLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                                .frame(width: 40, height: 40)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .resizable()
+                                .frame(width: 40, height: 40)
+                                .foregroundColor(Color.mainBlue)
+                        }
+                    }
+                    .disabled(isLoading)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 40)
                 .padding(.bottom, 40)
             }
-            .padding()
+        }
+        .sheet(isPresented: $showLocationSearch) {
+            if #available(iOS 16.0, *) {
+                LocationSearchView(selectedLocation: $viewModel.location)
+                    .presentationDetents([.height(400)])
+            } else {
+                LocationSearchView(selectedLocation: $viewModel.location)
+            }
+        }
+        .alert("Error", isPresented: $showAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(alertMessage)
         }
         .navigationBarBackButtonHidden(true)
-        .navigationBarHidden(true)
     }
 }
 
-struct BioEntryView_Previews: PreviewProvider {
-    static var previews: some View {
+struct LocationSearchView: View {
+    @Environment(\.dismiss) var dismiss
+    @Binding var selectedLocation: String
+    @State private var searchText = ""
+    @State private var locations: [String] = []
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                SearchBar(text: $searchText)
+                    .padding()
+                    .onChange(of: searchText) { newValue in
+                        searchLocations(query: newValue)
+                    }
+                
+                List(locations, id: \.self) { location in
+                    Button(action: {
+                        selectedLocation = location
+                        dismiss()
+                    }) {
+                        Text(location)
+                            .font(.custom("Markazi Text", size: 20))
+                            .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                    }
+                }
+            }
+            .navigationTitle("Choose Location")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+    
+    private func searchLocations(query: String) {
+        guard !query.isEmpty else {
+            locations = []
+            return
+        }
+        
+        let searchRequest = MKLocalSearch.Request()
+        searchRequest.naturalLanguageQuery = query
+        searchRequest.resultTypes = .address
+        
+        let search = MKLocalSearch(request: searchRequest)
+        search.start { response, error in
+            guard let response = response else {
+                locations = []
+                return
+            }
+            
+            var uniqueLocations = Set<String>()
+            locations = response.mapItems.compactMap { item -> String? in
+                guard let city = item.placemark.locality,
+                      let state = item.placemark.administrativeArea else {
+                    return nil
+                }
+                let location = "\(city), \(state)"
+                guard uniqueLocations.insert(location).inserted else {
+                    return nil
+                }
+                return location
+            }
+        }
+    }
+}
+
+struct SearchBar: View {
+    @Binding var text: String
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.gray)
+            
+            TextField("Search location...", text: $text)
+                .font(.custom("Markazi Text", size: 20))
+                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+        }
+        .padding(8)
+        .background(Color(.systemGray6))
+        .cornerRadius(10)
+    }
+}
+
+#Preview {
+    NavigationView {
         BioEntryView()
     }
 }

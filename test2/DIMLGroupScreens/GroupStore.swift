@@ -1,4 +1,6 @@
 import SwiftUI
+import FirebaseAuth
+import Foundation
 
 class GroupStore: ObservableObject {
     @Published private(set) var groups: [Group] = []

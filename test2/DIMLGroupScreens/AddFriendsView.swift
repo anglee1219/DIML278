@@ -1,49 +1,35 @@
 import SwiftUI
+import FirebaseAuth
 
 struct AddFriendsView: View {
     @Environment(\.dismiss) var dismiss
+    @StateObject private var friendsManager = FriendsManager.shared
     @State private var searchText = ""
-    @State private var addedFriends: Set<String> = []
-    @State private var yourFriends: [SuggestedUser] = []
-    @State private var recentlyAdded: String? = nil
-    @State private var selectedFriend: SuggestedUser? = nil
+    @State private var selectedFriend: User? = nil
     @State private var showFriendProfile = false
     @State private var showRemoveAlert = false
-    @State private var friendToRemove: SuggestedUser? = nil
+    @State private var friendToRemove: User? = nil
+    @State private var recentlyAdded: Set<String> = []
     private let mainYellow = Color(red: 1.0, green: 0.75, blue: 0)
-    
-    // Load saved friends when view appears
-    private func loadSavedFriends() {
-        if let savedFriendUsernames = UserDefaults.standard.stringArray(forKey: "addedFriends") {
-            addedFriends = Set(savedFriendUsernames)
-            yourFriends = sampleSuggestions.filter { addedFriends.contains($0.username) }
+
+    var filteredSuggestions: [User] {
+        if searchText.isEmpty {
+            return friendsManager.suggestedUsers
         }
-    }
-    
-    // Save friends to UserDefaults
-    private func saveFriends() {
-        UserDefaults.standard.set(Array(addedFriends), forKey: "addedFriends")
-    }
-    
-    private func removeFriend(_ friend: SuggestedUser) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            addedFriends.remove(friend.username)
-            yourFriends.removeAll { $0.username == friend.username }
-            saveFriends()
+        return friendsManager.suggestedUsers.filter { user in
+            user.name.lowercased().contains(searchText.lowercased()) ||
+            (user.username?.lowercased().contains(searchText.lowercased()) ?? false)
         }
     }
 
-    var filteredSuggestions: [SuggestedUser] {
-        if searchText.isEmpty {
-            return sampleSuggestions.filter { user in
-                !addedFriends.contains(user.username) || recentlyAdded == user.username
-            }
-        }
-        return sampleSuggestions.filter { user in
-            (!addedFriends.contains(user.username) || recentlyAdded == user.username) &&
-            (user.name.lowercased().contains(searchText.lowercased()) ||
-             user.username.lowercased().contains(searchText.lowercased()))
-        }
+    // Helper function to convert User to SuggestedUser
+    private func convertToSuggestedUser(_ user: User) -> SuggestedUser {
+        return SuggestedUser(
+            name: user.name,
+            username: user.username ?? "@unknown",
+            mutualFriends: 0, // We could implement mutual friends count later
+            source: "Friends"
+        )
     }
 
     var body: some View {
@@ -55,18 +41,18 @@ struct AddFriendsView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         // Your Friends Section
-                        if !yourFriends.isEmpty {
+                        if !friendsManager.friends.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Your Friends")
                                     .font(.custom("Markazi Text", size: 28))
                                     .bold()
-                                    .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0))
+                                    .foregroundColor(mainYellow)
                                     .padding(.horizontal)
                                 
                                 List {
-                                    ForEach(yourFriends) { friend in
+                                    ForEach(friendsManager.friends) { friend in
                                         FriendRowView(
-                                            person: friend,
+                                            user: friend,
                                             isInYourFriends: true,
                                             recentlyAdded: recentlyAdded,
                                             mainYellow: mainYellow,
@@ -88,7 +74,7 @@ struct AddFriendsView: View {
                                     }
                                 }
                                 .listStyle(PlainListStyle())
-                                .frame(height: CGFloat(yourFriends.count * 84)) // Adjust this value based on your row height
+                                .frame(height: CGFloat(friendsManager.friends.count * 84))
                                 .background(Color.white)
                                 .cornerRadius(20)
                                 .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
@@ -101,7 +87,7 @@ struct AddFriendsView: View {
                             Text("Find Friends")
                                 .font(.custom("Markazi Text", size: 28))
                                 .bold()
-                                .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0))
+                                .foregroundColor(mainYellow)
                                 .padding(.horizontal)
                             
                             if filteredSuggestions.isEmpty {
@@ -113,24 +99,14 @@ struct AddFriendsView: View {
                                 VStack(spacing: 0) {
                                     ForEach(filteredSuggestions) { person in
                                         FriendRowView(
-                                            person: person,
+                                            user: person,
                                             isInYourFriends: false,
                                             recentlyAdded: recentlyAdded,
                                             mainYellow: mainYellow,
                                             onAdd: {
-                                                // First animation - button changes
                                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                                    addedFriends.insert(person.username)
-                                                    recentlyAdded = person.username
-                                                }
-                                                
-                                                // Delay before moving to Your Friends section
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                                        yourFriends.append(person)
-                                                        recentlyAdded = nil
-                                                        saveFriends()
-                                                    }
+                                                    recentlyAdded.insert(person.id)
+                                                    friendsManager.sendFriendRequest(to: person.id)
                                                 }
                                             }
                                         )
@@ -154,23 +130,20 @@ struct AddFriendsView: View {
             .background(Color(red: 1, green: 0.989, blue: 0.93).ignoresSafeArea())
             .sheet(isPresented: $showFriendProfile) {
                 if let friend = selectedFriend {
-                    FriendProfileView(user: friend)
+                    FriendProfileView(user: convertToSuggestedUser(friend))
                 }
             }
             .alert("Remove Friend", isPresented: $showRemoveAlert) {
                 Button("Cancel", role: .cancel) {}
                 Button("Remove", role: .destructive) {
                     if let friend = friendToRemove {
-                        removeFriend(friend)
+                        friendsManager.removeFriend(friend.id)
                     }
                 }
             } message: {
                 if let friend = friendToRemove {
                     Text("Are you sure you want to remove \(friend.name) from your friends?")
                 }
-            }
-            .onAppear {
-                loadSavedFriends()
             }
         }
     }
@@ -197,7 +170,7 @@ struct AddFriendsView: View {
 
                 Spacer()
 
-                Text("     ") // Balance spacer
+                Text("     ")
                     .foregroundColor(.clear)
             }
             .padding(.horizontal)
@@ -229,9 +202,9 @@ struct AddFriendsView: View {
 }
 
 struct FriendRowView: View {
-    let person: SuggestedUser
+    let user: User
     let isInYourFriends: Bool
-    let recentlyAdded: String?
+    let recentlyAdded: Set<String>
     let mainYellow: Color
     var onTap: (() -> Void)?
     var onAdd: (() -> Void)?
@@ -241,23 +214,15 @@ struct FriendRowView: View {
             Circle()
                 .fill(Color.gray.opacity(0.3))
                 .frame(width: 50, height: 50)
-                .overlay(Text(person.name.prefix(1)).font(.headline))
+                .overlay(Text(user.name.prefix(1)).font(.headline))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(person.name)
+                Text(user.name)
                     .font(.custom("Fredoka-Regular", size: 16))
 
-                Text(person.username)
-                    .font(.caption)
-                    .foregroundColor(.gray)
-
-                Text(person.source)
-                    .font(.caption2)
-                    .foregroundColor(.gray)
-                
-                if person.mutualFriends > 0 {
-                    Text("\(person.mutualFriends) mutual friend\(person.mutualFriends > 1 ? "s" : "")")
-                        .font(.caption2)
+                if let username = user.username {
+                    Text(username)
+                        .font(.caption)
                         .foregroundColor(.gray)
                 }
             }
@@ -270,23 +235,22 @@ struct FriendRowView: View {
                     onAdd?()
                 }) {
                     HStack(spacing: 4) {
-                        Text(recentlyAdded == person.username ? "Added" : "Add Friend")
-                            .foregroundColor(recentlyAdded == person.username ? .black : .white)
-                        Image(systemName: recentlyAdded == person.username ? "checkmark" : "person.badge.plus")
-                            .foregroundColor(recentlyAdded == person.username ? .black : .white)
+                        Text(recentlyAdded.contains(user.id) ? "Request Sent" : "Add Friend")
+                            .foregroundColor(recentlyAdded.contains(user.id) ? .black : .white)
+                        Image(systemName: recentlyAdded.contains(user.id) ? "checkmark" : "person.badge.plus")
+                            .foregroundColor(recentlyAdded.contains(user.id) ? .black : .white)
                     }
                     .font(.system(size: 14, weight: .semibold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(recentlyAdded == person.username ? mainYellow : Color.blue)
+                            .fill(recentlyAdded.contains(user.id) ? mainYellow : Color.blue)
                     )
-                    .scaleEffect(recentlyAdded == person.username ? 0.95 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: recentlyAdded == person.username)
+                    .scaleEffect(recentlyAdded.contains(user.id) ? 0.95 : 1.0)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(recentlyAdded == person.username)
+                .disabled(recentlyAdded.contains(user.id))
             }
         }
         .padding(.vertical, 12)

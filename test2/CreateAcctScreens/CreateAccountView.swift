@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseAuth
 
 // Struct to hold all account-related fields
 struct AccountData {
@@ -9,8 +10,13 @@ struct AccountData {
 }
 
 struct CreateAccountView: View {
+    @StateObject private var authManager = AuthenticationManager.shared
     @State private var account = AccountData()
     @State private var navigateToNext = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+    @State private var isLoading = false
+    @Environment(\.dismiss) var dismiss
 
     // Validation logic
     private var isLongEnough: Bool { account.password.count >= 8 }
@@ -24,129 +30,189 @@ struct CreateAccountView: View {
     private var passwordsMatch: Bool {
         !account.password.isEmpty && account.password == account.retypePassword
     }
+    
+    private var isValidEmail: Bool {
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        return NSPredicate(format: "SELF MATCHES %@", emailRegex).evaluate(with: account.email)
+    }
+    
+    private var canProceed: Bool {
+        isLongEnough && hasSpecialChar && hasUppercase && passwordsMatch && isValidEmail && !account.username.isEmpty
+    }
 
     var body: some View {
-        ZStack {
-            Color(red: 1, green: 0.988, blue: 0.929).ignoresSafeArea()
-
-            VStack(spacing: 20) {
-                Spacer()
-
-                // Logo
-                VStack(spacing: 10) {
-                    Image("DIML_Logo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 80, height: 80)
-
-                    Text("DIML")
-                        .font(.custom("Fredoka-Bold", size: 28))
-                        .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                }
-
-                // Text fields
-                VStack(spacing: 20) {
-                    CustomTextField(placeholder: "Email", text: $account.email)
-                    CustomTextField(placeholder: "Username", text: $account.username)
-                    CustomTextField(placeholder: "Password", text: $account.password, isSecure: true)
-                    CustomTextField(placeholder: "Retype Password", text: $account.retypePassword, isSecure: true)
-                }
-                .padding(.top, 20)
-
-                // Instructions and login option
-                VStack(spacing: 10) {
-                    Text("Create a Username and Password")
-                        .font(.custom("Markazi Text", size: 18))
-                        .foregroundColor(.black)
-
-                    VStack(spacing: 5) {
-                        ChecklistItem(text: "8 letters", passed: isLongEnough)
-                        ChecklistItem(text: "1 Special Character", passed: hasSpecialChar)
-                        ChecklistItem(text: "1 Uppercase Letter", passed: hasUppercase)
-                        ChecklistItem(text: "Passwords Match", passed: passwordsMatch)
-                    }
-
-                    // Login link
-                    HStack {
-                        Text("Have an account?")
-                            .font(.custom("Markazi Text", size: 18))
-                            .foregroundColor(.black.opacity(0.6))
-
-                        NavigationLink(destination: LoginScreen()) {
-                            Text("Log in")
+        if #available(iOS 16.0, *) {
+            NavigationStack {
+                ZStack {
+                    Color(red: 1, green: 0.988, blue: 0.929).ignoresSafeArea()
+                    
+                    VStack(spacing: 20) {
+                        Spacer()
+                        
+                        // Logo
+                        VStack(spacing: 10) {
+                            Image("DIML_Logo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 80, height: 80)
+                            
+                            Text("DIML")
+                                .font(.custom("Caprasimo-Regular", size: 40))
+                                .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
+                        }
+                        
+                        // Text fields
+                        VStack(spacing: 24) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Email")
+                                    .font(.custom("Markazi Text", size: 18))
+                                    .foregroundColor(Color(red: 0.455, green: 0.506, blue: 0.267))
+                                TextField("", text: $account.email)
+                                    .textFieldStyle(UnderlineTextFieldStyle())
+                                    .textContentType(.emailAddress)
+                                    .keyboardType(.emailAddress)
+                                    .autocapitalization(.none)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Username")
+                                    .font(.custom("Markazi Text", size: 18))
+                                    .foregroundColor(Color(red: 0.455, green: 0.506, blue: 0.267))
+                                TextField("", text: $account.username)
+                                    .textFieldStyle(UnderlineTextFieldStyle())
+                                    .autocapitalization(.none)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Password")
+                                    .font(.custom("Markazi Text", size: 18))
+                                    .foregroundColor(Color(red: 0.455, green: 0.506, blue: 0.267))
+                                SecureField("", text: $account.password)
+                                    .textFieldStyle(UnderlineTextFieldStyle())
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Retype Password")
+                                    .font(.custom("Markazi Text", size: 18))
+                                    .foregroundColor(Color(red: 0.455, green: 0.506, blue: 0.267))
+                                SecureField("", text: $account.retypePassword)
+                                    .textFieldStyle(UnderlineTextFieldStyle())
+                            }
+                        }
+                        .padding(.horizontal, 40)
+                        .padding(.top, 20)
+                        
+                        // Password Requirements
+                        VStack(spacing: 8) {
+                            Text("Password Requirements")
+                                .font(.custom("Markazi Text", size: 20))
+                                .foregroundColor(Color(red: 0.455, green: 0.506, blue: 0.267))
+                                .padding(.bottom, 4)
+                            
+                            RequirementText(text: "8 letters", isPassed: isLongEnough)
+                            RequirementText(text: "1 Special Character", isPassed: hasSpecialChar)
+                            RequirementText(text: "1 Uppercase Letter", isPassed: hasUppercase)
+                            RequirementText(text: "Passwords Match", isPassed: passwordsMatch)
+                            RequirementText(text: "Valid Email", isPassed: isValidEmail)
+                        }
+                        .padding(.top, 20)
+                        
+                        // Login link
+                        HStack {
+                            Text("Have an account?")
                                 .font(.custom("Markazi Text", size: 18))
-                                .foregroundColor(Color(red: 0.733, green: 0.424, blue: 0.141))
+                                .foregroundColor(.black.opacity(0.6))
+                            
+                            NavigationLink(destination: LoginScreen()) {
+                                Text("Log in")
+                                    .font(.custom("Markazi Text", size: 18))
+                                    .foregroundColor(Color(red: 0.733, green: 0.424, blue: 0.141))
+                            }
                         }
-                    }
-                    .padding(.top, 8)
-                }
-
-                Spacer()
-
-                // Navigation arrow
-                NavigationLink(destination: BuildProfileFlowView(), isActive: $navigateToNext) {
-                    EmptyView()
-                }
-
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        if isLongEnough && hasSpecialChar && hasUppercase && passwordsMatch {
-                            navigateToNext = true
+                        .padding(.top, 20)
+                        
+                        Spacer()
+                        
+                        // Navigation Arrows
+                        HStack {
+                            // Back Arrow
+                            Button(action: {
+                                dismiss()
+                            }) {
+                                Image(systemName: "arrow.left.circle.fill")
+                                    .resizable()
+                                    .frame(width: 40, height: 40)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            Spacer()
+                            
+                            // Next Arrow
+                            Button(action: {
+                                guard canProceed else {
+                                    alertMessage = "Please fill in all fields correctly."
+                                    showAlert = true
+                                    return
+                                }
+                                
+                                isLoading = true
+                                // Create Firebase account immediately
+                                authManager.createAccount(email: account.email, password: account.password) { result in
+                                    switch result {
+                                    case .success(let user):
+                                        // Store additional info in UserDefaults
+                                        UserDefaults.standard.set(account.username, forKey: "profile_username")
+                                        UserDefaults.standard.set(account.username, forKey: "profile_name")
+                                
+                                // Navigate to next screen
+                                        DispatchQueue.main.async {
+                                isLoading = false
+                                navigateToNext = true
+                                        }
+                                        
+                                    case .failure(let error):
+                                        DispatchQueue.main.async {
+                                            isLoading = false
+                                            alertMessage = error.localizedDescription
+                                            showAlert = true
+                                        }
+                                    }
+                                }
+                            }) {
+                                if isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: Color.mainBlue))
+                                        .frame(width: 40, height: 40)
+                                } else {
+                                    Image(systemName: "arrow.right.circle.fill")
+                                        .resizable()
+                                        .frame(width: 40, height: 40)
+                                        .foregroundColor(canProceed ? Color.mainBlue : .gray)
+                                }
+                            }
+                            .disabled(!canProceed || isLoading)
                         }
-                    }) {
-                        Image(systemName: "arrow.right")
-                            .font(.title2)
-                            .foregroundColor(
-                                (isLongEnough && hasSpecialChar && hasUppercase && passwordsMatch) ?
-                                Color(red: 0.157, green: 0.212, blue: 0.094) : .gray
-                            )
+                        .padding(.horizontal, 40)
+                        .padding(.bottom, 40)
                     }
-                    .disabled(!(isLongEnough && hasSpecialChar && hasUppercase && passwordsMatch))
                 }
-                .padding(.horizontal)
+                .navigationDestination(isPresented: $navigateToNext) {
+                    BuildProfileFlowView()
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.5), value: navigateToNext)
+                }
+                .alert(isPresented: $showAlert) {
+                    Alert(
+                        title: Text("Message"),
+                        message: Text(alertMessage),
+                        dismissButton: .default(Text("OK"))
+                    )
+                }
             }
-            .padding(.horizontal, 30)
+            .navigationBarHidden(true)
+        } else {
+            // Fallback on earlier versions
         }
-        .navigationBarHidden(true)
-        .navigationBarBackButtonHidden(true)
-    }
-}
-
-// MARK: - Reusable TextField with underline
-struct CustomTextField: View {
-    var placeholder: String
-    @Binding var text: String
-    var isSecure: Bool = false
-
-    var body: some View {
-        VStack(spacing: 4) {
-            if isSecure {
-                SecureField(placeholder, text: $text)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.gray)
-            } else {
-                TextField(placeholder, text: $text)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.gray)
-            }
-
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(.gray.opacity(0.4))
-        }
-    }
-}
-
-// MARK: - Checklist Item View
-struct ChecklistItem: View {
-    var text: String
-    var passed: Bool
-
-    var body: some View {
-        Text(text)
-            .font(.custom("Markazi Text", size: 16))
-            .foregroundColor(passed ? .green : Color(red: 0.85, green: 0.6, blue: 0.5))
     }
 }
 
@@ -157,4 +223,4 @@ struct CreateAccountView_Previews: PreviewProvider {
             CreateAccountView()
         }
     }
-}
+} 

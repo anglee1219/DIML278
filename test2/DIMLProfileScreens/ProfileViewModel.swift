@@ -1,99 +1,238 @@
 import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
+import FirebaseStorage
 
 class ProfileViewModel: ObservableObject {
     static let shared = ProfileViewModel()
     
-    @Published var name: String {
+    @Published var name: String = "" {
         didSet {
             saveProfile()
         }
     }
     
-    @Published var username: String {
+    @Published var username: String = "" {
         didSet {
             saveProfile()
         }
     }
     
-    let currentUserId = "1" // Ideally this should be generated or securely assigned
-
-    @Published var pronouns: String {
+    @Published var pronouns: String = "" {
         didSet {
             saveProfile()
         }
     }
-    @Published var zodiac: String {
+    
+    @Published var zodiac: String = "" {
         didSet {
             saveProfile()
         }
     }
-    @Published var location: String {
+    
+    @Published var location: String = "" {
         didSet {
             saveProfile()
         }
     }
-    @Published var school: String {
+    
+    @Published var school: String = "" {
         didSet {
             saveProfile()
         }
     }
-    @Published var interests: String {
+    
+    @Published var interests: String = "" {
         didSet {
             saveProfile()
         }
     }
-    @Published var showLocation: Bool {
+    
+    @Published var showLocation: Bool = true {
         didSet {
             savePrivacySettings()
             objectWillChange.send()
         }
     }
-    @Published var showSchool: Bool {
+    
+    @Published var showSchool: Bool = true {
         didSet {
             savePrivacySettings()
             objectWillChange.send()
         }
     }
+    
     @Published var profileImageData: Data? {
         didSet {
             saveProfileImage()
+            // Cache the image data locally
+            if let imageData = profileImageData {
+                UserDefaults.standard.set(imageData, forKey: "cached_profile_image_\(Auth.auth().currentUser?.uid ?? "")")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "cached_profile_image_\(Auth.auth().currentUser?.uid ?? "")")
+            }
         }
     }
     
-    init() { // Make init internal instead of private
-        // Load saved values or use defaults
-        self.name = UserDefaults.standard.string(forKey: "profile_name") ?? "Rebecca"
-        self.username = UserDefaults.standard.string(forKey: "profile_username") ?? "@rebecca"
-        self.pronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? "she/her"
-        self.zodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? "scorpio"
-        self.location = UserDefaults.standard.string(forKey: "profile_location") ?? "miami, fl"
-        self.school = UserDefaults.standard.string(forKey: "profile_school") ?? "stanford"
-        self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? "hiking, cooking, & taking pictures"
-        self.profileImageData = UserDefaults.standard.data(forKey: "profile_image")
-        self.showLocation = UserDefaults.standard.bool(forKey: "privacy_show_location")
-        self.showSchool = UserDefaults.standard.bool(forKey: "privacy_show_school")
+    init() {
+        loadUserProfile()
+        
+        // Set up Auth state listener
+        Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
+            if user != nil {
+                self?.loadUserProfile()
+            } else {
+                self?.clearProfile()
+            }
+        }
     }
     
-    private func saveProfile() {
-        UserDefaults.standard.set(name, forKey: "profile_name")
-        UserDefaults.standard.set(username, forKey: "profile_username")
-        UserDefaults.standard.set(pronouns, forKey: "profile_pronouns")
-        UserDefaults.standard.set(zodiac, forKey: "profile_zodiac")
-        UserDefaults.standard.set(location, forKey: "profile_location")
-        UserDefaults.standard.set(school, forKey: "profile_school")
-        UserDefaults.standard.set(interests, forKey: "profile_interests")
-        objectWillChange.send()
+    private func loadUserProfile() {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            print("No authenticated user")
+            return
+        }
+        
+        // First try to load from cache
+        if let cachedImageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(userId)") {
+            self.profileImageData = cachedImageData
+        }
+        
+        let db = Firestore.firestore()
+        db.collection("users").document(userId).getDocument { [weak self] (document, error) in
+            if let error = error {
+                print("Error loading profile: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let document = document, document.exists, let data = document.data() else {
+                print("No profile document found")
+                return
+            }
+            
+            DispatchQueue.main.async {
+                self?.name = data["name"] as? String ?? ""
+                self?.username = data["username"] as? String ?? ""
+                self?.pronouns = data["pronouns"] as? String ?? ""
+                self?.zodiac = data["zodiacSign"] as? String ?? ""
+                self?.location = data["location"] as? String ?? ""
+                self?.school = data["school"] as? String ?? ""
+                self?.interests = data["interests"] as? String ?? ""
+                self?.showLocation = data["showLocation"] as? Bool ?? true
+                self?.showSchool = data["showSchool"] as? Bool ?? true
+                
+                // Load profile image from Firebase Storage
+                if let imageURL = data["profileImageURL"] as? String,
+                   let url = URL(string: imageURL) {
+                    URLSession.shared.dataTask(with: url) { data, response, error in
+                        if let error = error {
+                            print("Error downloading profile image: \(error.localizedDescription)")
+                            return
+                        }
+                        if let data = data {
+                            DispatchQueue.main.async {
+                                self?.profileImageData = data
+                            }
+                        }
+                    }.resume()
+                }
+            }
+        }
+    }
+    
+    private func clearProfile() {
+        name = ""
+        username = ""
+        pronouns = ""
+        zodiac = ""
+        location = ""
+        school = ""
+        interests = ""
+        showLocation = true
+        showSchool = true
+        profileImageData = nil
+        
+        // Clear cached image
+        if let userId = Auth.auth().currentUser?.uid {
+            UserDefaults.standard.removeObject(forKey: "cached_profile_image_\(userId)")
+        }
+    }
+    
+    func saveProfile() {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            print("No authenticated user")
+            return
+        }
+        
+        let db = Firestore.firestore()
+        let profileData: [String: Any] = [
+            "name": name,
+            "username": username,
+            "pronouns": pronouns,
+            "zodiacSign": zodiac,
+            "location": location,
+            "school": school,
+            "interests": interests,
+            "showLocation": showLocation,
+            "showSchool": showSchool,
+            "lastUpdated": FieldValue.serverTimestamp()
+        ]
+        
+        db.collection("users").document(userId).setData(profileData, merge: true) { error in
+            if let error = error {
+                print("Error saving profile: \(error.localizedDescription)")
+            } else {
+                print("Profile saved successfully")
+            }
+        }
     }
     
     private func savePrivacySettings() {
-        UserDefaults.standard.set(showLocation, forKey: "privacy_show_location")
-        UserDefaults.standard.set(showSchool, forKey: "privacy_show_school")
-        objectWillChange.send()
+        // Privacy settings are saved as part of the profile
+        saveProfile()
     }
     
     private func saveProfileImage() {
-        if let imageData = profileImageData {
-            UserDefaults.standard.set(imageData, forKey: "profile_image")
+        guard let userId = Auth.auth().currentUser?.uid,
+              let imageData = profileImageData else {
+            return
+        }
+        
+        let storage = Storage.storage()
+        let storageRef = storage.reference()
+        let profileImageRef = storageRef.child("profile_images/\(userId).jpg")
+        
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        
+        // Show loading state if needed
+        profileImageRef.putData(imageData, metadata: metadata) { [weak self] metadata, error in
+            if let error = error {
+                print("Error uploading profile image: \(error.localizedDescription)")
+                return
+            }
+            
+            // Get download URL and save it to Firestore
+            profileImageRef.downloadURL { url, error in
+                if let error = error {
+                    print("Error getting download URL: \(error.localizedDescription)")
+                    return
+                }
+                
+                if let downloadURL = url {
+                    let db = Firestore.firestore()
+                    db.collection("users").document(userId).setData([
+                        "profileImageURL": downloadURL.absoluteString,
+                        "lastUpdated": FieldValue.serverTimestamp()
+                    ], merge: true) { error in
+                        if let error = error {
+                            print("Error saving profile image URL: \(error.localizedDescription)")
+                        } else {
+                            print("Profile image URL saved successfully")
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -104,8 +243,34 @@ class ProfileViewModel: ObservableObject {
     }
     
     func removeProfileImage() {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return
+        }
+        
+        // Remove from Firebase Storage
+        let storage = Storage.storage()
+        let storageRef = storage.reference()
+        let profileImageRef = storageRef.child("profile_images/\(userId).jpg")
+        
+        profileImageRef.delete { error in
+            if let error = error {
+                print("Error deleting profile image: \(error.localizedDescription)")
+            }
+        }
+        
+        // Remove URL from Firestore
+        let db = Firestore.firestore()
+        db.collection("users").document(userId).updateData([
+            "profileImageURL": FieldValue.delete()
+        ]) { error in
+            if let error = error {
+                print("Error removing profile image URL: \(error.localizedDescription)")
+            }
+        }
+        
+        // Clear local data
         self.profileImageData = nil
-        UserDefaults.standard.removeObject(forKey: "profile_image")
+        UserDefaults.standard.removeObject(forKey: "cached_profile_image_\(userId)")
     }
     
     var profileImage: UIImage? {

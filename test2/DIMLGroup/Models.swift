@@ -1,23 +1,58 @@
-import SwiftUI
+import Foundation
+import UIKit
+import FirebaseFirestore
 
-struct User: Identifiable, Hashable, Codable {
-    var id: String
-    var name: String
-    var username: String?
-    var role: MemberRole?
+public enum UserRole: Int, Codable {
+    case admin = 0
+    case influencer = 1
+    case member = 2
     
-    init(id: String = UUID().uuidString, name: String, username: String? = nil, role: MemberRole? = nil) {
+    public var stringValue: String {
+        switch self {
+        case .admin: return "Admin"
+        case .influencer: return "Current Influencer"
+        case .member: return "Member"
+        }
+    }
+}
+
+public class User: Identifiable, Codable {
+    public var id: String
+    public var name: String
+    public var username: String?
+    public var role: UserRole = .member
+    public var profileImageUrl: String?
+    public var pronouns: String?
+    public var birthday: Date?
+    public var bio: String?
+    
+    public init(id: String = UUID().uuidString, 
+                name: String, 
+                username: String? = nil, 
+                role: UserRole = .member,
+                profileImageUrl: String? = nil, 
+                pronouns: String? = nil, 
+                birthday: Date? = nil, 
+                bio: String? = nil) {
         self.id = id
         self.name = name
         self.username = username
         self.role = role
+        self.profileImageUrl = profileImageUrl
+        self.pronouns = pronouns
+        self.birthday = birthday
+        self.bio = bio
+    }
+    
+    public static func == (lhs: User, rhs: User) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
-enum MemberRole: String, Codable {
-    case admin = "Admin"
-    case influencer = "Current Influencer"
-    case member = "Member"
+extension User: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct Group: Identifiable, Codable {
@@ -26,6 +61,14 @@ struct Group: Identifiable, Codable {
     var members: [User]
     var currentInfluencerId: String
     var date: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case members
+        case currentInfluencerId
+        case date
+    }
     
     init(id: String = UUID().uuidString, name: String, members: [User] = [], currentInfluencerId: String? = nil, date: Date = Date()) {
         self.id = id

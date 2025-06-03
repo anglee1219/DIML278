@@ -1,11 +1,13 @@
 import SwiftUI
 import UIKit
 
-struct ImagePicker: UIViewControllerRepresentable {
-    @Binding var image: UIImage?
+struct CameraView: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let completion: (UIImage) -> Void
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
+        picker.sourceType = .camera
         picker.delegate = context.coordinator
         return picker
     }
@@ -16,16 +18,22 @@ struct ImagePicker: UIViewControllerRepresentable {
         Coordinator(self)
     }
 
-    class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
-        let parent: ImagePicker
-        init(_ parent: ImagePicker) {
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraView
+
+        init(_ parent: CameraView) {
             self.parent = parent
         }
+
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            if let uiImage = info[.originalImage] as? UIImage {
-                parent.image = uiImage
+            if let image = info[.originalImage] as? UIImage {
+                parent.completion(image)
             }
-            picker.dismiss(animated: true)
+            parent.isPresented = false
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.isPresented = false
         }
     }
-}
+} 

@@ -18,65 +18,76 @@ struct PronounSelectionView: View {
             Color(red: 1, green: 0.988, blue: 0.929)
                 .ignoresSafeArea()
 
-            VStack(spacing: 30) {
-                Image("DIML_Logo")
+            VStack(spacing: 40) {
+                // Logo at the top
+                Image("DIML_People_Icon")
                     .resizable()
                     .frame(width: 60, height: 60)
+                    .padding(.top, 60)
 
+                // Question text
                 Text("What are your pronouns?")
-                    .font(.custom("Markazi Text", size: 30))
-                    .fontWeight(.semibold)
-                    .foregroundColor(Color(red: 0.16, green: 0.21, blue: 0.09))
+                    .font(.custom("Markazi Text", size: 36))
+                    .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))  // Main yellow
+                    .padding(.bottom, 20)
 
-                VStack(spacing: 18) {
+                // Pronoun buttons
+                VStack(spacing: 16) {
                     ForEach(pronouns, id: \.self) { pronoun in
                         Button(action: {
                             selectedPronoun = pronoun
                         }) {
-                            Text(pronoun)
-                                .font(.custom("Markazi Text", size: 20))
-                                .foregroundColor(selectedPronoun == pronoun ? .black : .gray)
-                                .padding(.vertical, 8)
-                                .frame(maxWidth: .infinity)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(selectedPronoun == pronoun ? Color.black : Color.gray.opacity(0.4), lineWidth: 1)
-                                )
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 15)
+                                    .fill(Color.white)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 15)
+                                            .stroke(selectedPronoun == pronoun ? Color.mainBlue : Color.gray.opacity(0.3), lineWidth: 1)
+                                    )
+                                
+                                Text(pronoun)
+                                    .font(.custom("Markazi Text", size: 24))
+                                    .foregroundColor(selectedPronoun == pronoun ? Color.mainBlue : Color.gray)
+                            }
+                            .frame(height: 56)
                         }
-                        .padding(.horizontal, 30)
                     }
                 }
+                .padding(.horizontal, 20)
 
                 Spacer()
 
                 // Navigation Links
-                NavigationLink(destination: ProfilePhotoUploadView(), isActive: $navigateBack) { EmptyView() }
+                NavigationLink(destination: ProfilePicSetup(), isActive: $navigateBack) { EmptyView() }
                 NavigationLink(destination: BirthdayEntryView(), isActive: $navigateToBirthday) { EmptyView() }
 
+                // Navigation arrows
                 HStack {
                     Button(action: {
                         navigateBack = true
                     }) {
                         Image(systemName: "arrow.left")
-                            .font(.title2)
-                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                            .font(.title)
+                            .foregroundColor(Color.mainBlue)
                     }
 
                     Spacer()
 
                     Button(action: {
-                        navigateToBirthday = true
+                        if selectedPronoun != nil {
+                            navigateToBirthday = true
+                        }
                     }) {
                         Image(systemName: "arrow.right")
-                            .font(.title2)
-                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                            .font(.title)
+                            .foregroundColor(selectedPronoun != nil ? Color.mainBlue : .gray)
                     }
                 }
-                .padding(.horizontal, 30)
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
             }
-            .padding(.top, 40)
         }
-        .navigationBarBackButtonHidden(true) // Hides default nav bar back button
+        .navigationBarBackButtonHidden(true)
     }
 }
 

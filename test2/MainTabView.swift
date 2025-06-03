@@ -6,6 +6,7 @@ struct MainTabView: View {
     @State private var showCamera = false
     @State private var showPermissionAlert = false
     @State private var keyboardVisible = false
+    @StateObject private var authManager = AuthenticationManager.shared
     
     init(currentTab: Tab = .home) {
         _currentTab = State(initialValue: currentTab)
@@ -28,6 +29,7 @@ struct MainTabView: View {
     }
 
     var body: some View {
+        NavigationView {
         ZStack {
             // Switch tabs
             switch currentTab {
@@ -48,6 +50,8 @@ struct MainTabView: View {
                     }
                 }
             }
+            }
+            .navigationBarHidden(true)
         }
         .onAppear {
             // Setup keyboard notifications

@@ -9,6 +9,8 @@
 		<string>Caprasimo-Regular.ttf</string>
 		<string>Fredoka-Regular.ttf</string>
 		<string>Fredoka-Medium.ttf</string>
+		<string>MarkaziText-Regular.ttf</string>
+		<string>MarkaziText-Medium.ttf</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>We need access to your microphone for voice search functionality.</string>

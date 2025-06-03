@@ -3,10 +3,13 @@ import SwiftUI
 struct LoginScreen: View {
     @StateObject private var authManager = AuthenticationManager.shared
     @StateObject private var store = EntryStore()
-    @State private var emailOrPhone: String = ""
+    @State private var email: String = ""
     @State private var password: String = ""
     @State private var isPressed = false
     @State private var showCreateAccount = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+    @State private var isLoading = false
 
     var body: some View {
         ZStack {
@@ -31,71 +34,78 @@ struct LoginScreen: View {
                     }
 
                     // Input Fields
-                    VStack(spacing: 30) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("Phone Number, username, or email", text: $emailOrPhone)
-                                .font(.custom("Markazi Text", size: 20))
-                                .autocapitalization(.none)
-                                .disableAutocorrection(true)
-                                .padding(.bottom, 5)
-                                .foregroundColor(.black)
-                                .opacity(0.6)
+                    VStack(spacing: 20) {
+                        TextField("Email", text: $email)
+                            .textFieldStyle(UnderlineTextFieldStyle())
+                            .autocapitalization(.none)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .padding(.horizontal, 40)
+                            .foregroundColor(.gray)
 
-                            Divider()
-                                .background(Color.black.opacity(0.1))
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            SecureField("Password", text: $password)
-                                .font(.custom("Markazi Text", size: 20))
-                                .padding(.bottom, 5)
-                                .foregroundColor(.black)
-                                .opacity(0.6)
-
-                            Divider()
-                                .background(Color.black.opacity(0.1))
-                        }
+                        SecureField("Password", text: $password)
+                            .textFieldStyle(UnderlineTextFieldStyle())
+                            .textContentType(.password)
+                            .padding(.horizontal, 40)
+                            .foregroundColor(.gray)
                     }
-                    .padding(.horizontal)
 
                     // Login Button
                     Button(action: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                             isPressed = true
+                            isLoading = true
                         }
                         
-                        // Delay the login action slightly for animation
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            authManager.isAuthenticated = true
-                            
-                            // Switch to MainTabView
-                            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                               let window = windowScene.windows.first {
-                                window.rootViewController = UIHostingController(rootView: 
-                                    NavigationView {
-                                        MainTabView(currentTab: .home)
-                                    }
-                                )
-                            }
-                            
+                        authManager.signIn(email: email, password: password) { result in
+                            isLoading = false
                             isPressed = false
+                            
+                            switch result {
+                            case .success(_):
+                                // Authentication successful, AuthenticationManager will handle the state change
+                                break
+                            case .failure(let error):
+                                alertMessage = error.localizedDescription
+                                showAlert = true
+                            }
                         }
                     }) {
-                        Text("Login")
-                            .font(.custom("Fredoka-Medium", size: 20))
-                            .foregroundColor(.white)
-                            .frame(width: 200, height: 45)
-                            .background(Color(red: 0.353, green: 0.447, blue: 0.875))
-                            .cornerRadius(10)
-                            .scaleEffect(isPressed ? 0.95 : 1.0)
-                            .opacity(isPressed ? 0.9 : 1.0)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+                        ZStack {
+                            Text("Login")
+                                .font(.custom("Fredoka-Medium", size: 20))
+                                .foregroundColor(.white)
+                                .frame(width: 200, height: 45)
+                                .background(Color(red: 0.353, green: 0.447, blue: 0.875))
+                                .cornerRadius(10)
+                                .scaleEffect(isPressed ? 0.95 : 1.0)
+                                .opacity(isPressed ? 0.9 : 1.0)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+                            
+                            if isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            }
+                        }
                     }
+                    .disabled(isLoading)
                     .padding(.bottom, 10)
 
                     // Forgot Password
                     Button(action: {
-                        // Implement password recovery
+                        if !email.isEmpty {
+                            authManager.resetPassword(email: email) { error in
+                                if let error = error {
+                                    alertMessage = error.localizedDescription
+                                } else {
+                                    alertMessage = "Password reset email sent. Please check your inbox."
+                                }
+                                showAlert = true
+                            }
+                        } else {
+                            alertMessage = "Please enter your email address first."
+                            showAlert = true
+                        }
                     }) {
                         Text("Forgot Password?")
                             .font(.custom("Markazi Text", size: 20))
@@ -126,6 +136,13 @@ struct LoginScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .alert(isPresented: $showAlert) {
+            Alert(
+                title: Text("Message"),
+                message: Text(alertMessage),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 }
 

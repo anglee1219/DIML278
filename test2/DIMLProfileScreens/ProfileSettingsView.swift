@@ -1,45 +1,5 @@
 import SwiftUI
-
-class AuthenticationManager: ObservableObject {
-    @Published var isAuthenticated: Bool {
-        didSet {
-            UserDefaults.standard.set(isAuthenticated, forKey: "isAuthenticated")
-            if !isAuthenticated {
-                // Clear user data when logging out
-                UserDefaults.standard.removeObject(forKey: "profile_name")
-                UserDefaults.standard.removeObject(forKey: "profile_username")
-                UserDefaults.standard.removeObject(forKey: "profile_pronouns")
-                UserDefaults.standard.removeObject(forKey: "profile_zodiac")
-                UserDefaults.standard.removeObject(forKey: "profile_location")
-                UserDefaults.standard.removeObject(forKey: "profile_school")
-                UserDefaults.standard.removeObject(forKey: "profile_interests")
-                UserDefaults.standard.removeObject(forKey: "profile_image")
-                UserDefaults.standard.removeObject(forKey: "privacy_show_location")
-                UserDefaults.standard.removeObject(forKey: "privacy_show_school")
-                
-                // Reset root view to login screen
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let window = windowScene.windows.first {
-                    window.rootViewController = UIHostingController(rootView: 
-                        NavigationView {
-                            LoginScreen()
-                        }
-                    )
-                }
-            }
-        }
-    }
-    
-    static let shared = AuthenticationManager()
-    
-    init() {
-        self.isAuthenticated = UserDefaults.standard.bool(forKey: "isAuthenticated")
-    }
-    
-    func signOut() {
-        isAuthenticated = false
-    }
-}
+import FirebaseAuth
 
 struct ProfileSettingsView: View {
     @Environment(\.dismiss) var dismiss

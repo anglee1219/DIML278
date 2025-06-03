@@ -1,4 +1,6 @@
 import SwiftUI
+import FirebaseAuth
+import Foundation
 /* Initial Create Circle Screen
 struct CreateGroupView: View {
     var onGroupCreated: (Group) -> Void
@@ -68,6 +70,7 @@ struct CreateGroupView: View {
     @State private var myFriends: [User] = existingFriends
     @State private var searchText = ""
     @State private var currentPage = 0
+    @State private var recentlyAdded: String? = nil
     private let friendsPerPage = 6
     private let gridSpacing: CGFloat = 15
     private let profileSize: CGFloat = 100
@@ -315,21 +318,38 @@ struct CreateGroupView: View {
                             
                             Spacer()
                             
-                            // Add Friend Button
+                            // Add Friend Button with Animation
                             Button(action: {
                                 let newFriend = User(id: UUID().uuidString, name: person.name, username: person.username)
-                                withAnimation {
-                                    myFriends.append(newFriend)
+                                // First animation - button changes
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    recentlyAdded = person.name
+                                }
+                                
+                                // Delay before adding to myFriends
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                        myFriends.append(newFriend)
+                                        recentlyAdded = nil
+                                    }
                                 }
                             }) {
-                                Text("Add Friend")
-                                    .font(.custom("Markazi Text", size: 16))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 15)
-                                    .padding(.vertical, 8)
-                                    .background(Color.blue)
-                                    .cornerRadius(20)
+                                HStack(spacing: 4) {
+                                    Text(recentlyAdded == person.name ? "Added" : "Add Friend")
+                                        .foregroundColor(recentlyAdded == person.name ? .black : .white)
+                                    Image(systemName: recentlyAdded == person.name ? "checkmark" : "person.badge.plus")
+                                        .foregroundColor(recentlyAdded == person.name ? .black : .white)
+                                }
+                                .font(.system(size: 14, weight: .semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(recentlyAdded == person.name ? yellowColor : Color.blue)
+                                )
+                                .scaleEffect(recentlyAdded == person.name ? 0.95 : 1.0)
                             }
+                            .disabled(recentlyAdded == person.name || myFriends.contains(where: { $0.name == person.name }))
                         }
                         .padding(.vertical, 8)
                         .padding(.horizontal)

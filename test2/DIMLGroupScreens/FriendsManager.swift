@@ -2,7 +2,6 @@ import Foundation
 import FirebaseFirestore
 import FirebaseAuth
 import SwiftUI
-@_exported import struct test2.User
 
 // MARK: - FriendsManager
 class FriendsManager: ObservableObject {
@@ -39,7 +38,7 @@ class FriendsManager: ObservableObject {
         db.collection("users")
             .whereField("id", isNotEqualTo: currentUserId)
             .limit(to: 20)
-            .addSnapshotListener { [weak self] snapshot, error in
+            .getDocuments { [weak self] snapshot, error in
                 guard let self = self, let snapshot = snapshot else { return }
                 
                 let users = snapshot.documents.compactMap { document -> User? in
@@ -69,7 +68,8 @@ class FriendsManager: ObservableObject {
             group.enter()
             db.collection("users").document(userId).getDocument { document, error in
                 defer { group.leave() }
-                if let document = document, let user = try? document.data(as: User.self) {
+                if let document = document,
+                   let user = try? document.data(as: User.self) {
                     users.append(user)
                 }
             }
@@ -109,26 +109,4 @@ class FriendsManager: ObservableObject {
             self.friends.removeAll { $0.id == friendId }
         }
     }
-}
-
-// MARK: - User Model
-struct User: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let username: String?
-    var role: Role
-    
-    static func == (lhs: User, rhs: User) -> Bool {
-        lhs.id == rhs.id
-    }
-    
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-}
-
-enum Role: String {
-    case admin
-    case member
-    case influencer
 } 

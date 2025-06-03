@@ -1,15 +1,18 @@
 import SwiftUI
+import AVFoundation
 
-struct ProfilePhotoUploadView: View {
+struct ProfilePicSetup: View {
+    @Environment(\.dismiss) var dismiss
     @State private var image: UIImage?
     @State private var showImagePicker = false
     @State private var showActionSheet = false
     @State private var useCamera = false
-    @State private var goToNextScreen = false
-    @State private var goToPreviousScreen = false
-    @State private var showCropPreview = false
+    @State private var showPermissionAlert = false
     @State private var pendingProfileImage: UIImage?
-
+    @State private var showCropPreview = false
+    @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
+    @State private var navigateToNext = false
+    
     var body: some View {
         ZStack {
             Color(red: 1, green: 0.988, blue: 0.929)
@@ -44,57 +47,68 @@ struct ProfilePhotoUploadView: View {
 
                 Spacer()
 
-                // Hidden NavLinks for navigation
-                NavigationLink(destination: PronounSelectionView(), isActive: $goToNextScreen) { EmptyView() }
-                NavigationLink(destination: CreateAccountView(), isActive: $goToPreviousScreen) { EmptyView() }
-
-                // Navigation arrows
-                HStack {
-                    Button(action: {
-                        goToPreviousScreen = true
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.title2)
-                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                    }
-
-                    Spacer()
-
-                    Button(action: {
-                        if image != nil {
-                            goToNextScreen = true
-                        }
-                    }) {
-                        Image(systemName: "arrow.right")
-                            .font(.title2)
-                            .foregroundColor(image != nil ?
-                                Color(red: 0.157, green: 0.212, blue: 0.094) :
-                                .gray.opacity(0.4))
-                    }
-                    .disabled(image == nil)
+                // Navigation Link to next screen
+                NavigationLink(destination: PronounSelectionView(), isActive: $navigateToNext) {
+                    EmptyView()
                 }
-                .padding(.horizontal, 30)
+
+                // Navigation Arrows
+                HStack {
+                    // Back Arrow
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Image(systemName: "arrow.left.circle.fill")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                            .foregroundColor(.gray)
+                    }
+                    
+                    Spacer()
+                    
+                    // Next Arrow
+                    Button(action: {
+                        // Save profile image to UserDefaults if selected
+                        if let imageData = image?.jpegData(compressionQuality: 0.8) {
+                            UserDefaults.standard.set(imageData, forKey: "profile_image")
+                        }
+                        navigateToNext = true
+                    }) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                            .foregroundColor(Color.mainBlue)
+                    }
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
             }
             .padding(.top, 40)
             .confirmationDialog("Choose a photo", isPresented: $showActionSheet, titleVisibility: .visible) {
                 Button("Take Photo") {
-                    useCamera = true
-                    showImagePicker = true
+                    checkCameraPermission()
                 }
                 Button("Choose from Library") {
-                    useCamera = false
+                    sourceType = .photoLibrary
                     showImagePicker = true
+                }
+                if image != nil {
+                    Button("Remove Photo", role: .destructive) {
+                        image = nil
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(image: Binding(
                     get: { pendingProfileImage },
-                    set: { if let image = $0 {
-                        pendingProfileImage = image
-                        showCropPreview = true
+                    set: { newImage in
+                        if let newImage = newImage {
+                            pendingProfileImage = newImage
+                            showCropPreview = true
+                        }
                     }
-                }))
+                ), sourceType: sourceType)
             }
             .sheet(isPresented: $showCropPreview) {
                 if let previewImage = pendingProfileImage {
@@ -131,19 +145,46 @@ struct ProfilePhotoUploadView: View {
                     }
                 }
             }
+            .alert(isPresented: $showPermissionAlert) {
+                Alert(
+                    title: Text("Camera Access Required"),
+                    message: Text("Please enable camera access in Settings to take photos."),
+                    primaryButton: .default(Text("Settings"), action: {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }),
+                    secondaryButton: .cancel()
+                )
+            }
         }
-        .navigationBarBackButtonHidden(true)
+        .navigationBarHidden(true)
+    }
+    
+    private func checkCameraPermission() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            sourceType = .camera
+            showImagePicker = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        sourceType = .camera
+                        showImagePicker = true
+                    } else {
+                        showPermissionAlert = true
+                    }
+                }
+            }
+        default:
+            showPermissionAlert = true
+        }
     }
 }
 
-struct ProfilePhotoUploadView_Previews: PreviewProvider {
-    static var previews: some View {
-        if #available(iOS 16.0, *) {
-            NavigationStack {
-                ProfilePhotoUploadView()
-            }
-        } else {
-            // Fallback on earlier versions
-        }
+#Preview {
+    NavigationView {
+        ProfilePicSetup()
     }
 }

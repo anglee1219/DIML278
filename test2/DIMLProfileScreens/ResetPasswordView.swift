@@ -101,31 +101,6 @@ struct ResetPasswordView: View {
     }
 }
 
-// Custom text field style with underline
-struct UnderlineTextFieldStyle: TextFieldStyle {
-    func _body(configuration: TextField<Self._Label>) -> some View {
-        VStack {
-            configuration
-                .font(.custom("Markazi Text", size: 18))
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color.gray.opacity(0.3))
-        }
-    }
-}
-
-// Requirement text component
-struct RequirementText: View {
-    let text: String
-    let isPassed: Bool
-    
-    var body: some View {
-        Text(text)
-            .font(.custom("Markazi Text", size: 16))
-            .foregroundColor(isPassed ? Color(red: 0.455, green: 0.506, blue: 0.267) : Color.gray)
-    }
-}
-
 #Preview {
     ResetPasswordView()
 } 

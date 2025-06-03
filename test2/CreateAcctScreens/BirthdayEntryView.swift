@@ -1,44 +1,23 @@
 import SwiftUI
 
 struct BirthdayEntryView: View {
-    @StateObject private var viewModel = ProfileViewModel.shared
-    @State private var selectedDate = Date()
-    @State private var goToNextScreen = false
-    @State private var goToPreviousScreen = false
+    @State private var birthDate = Date()
+    @State private var showDatePicker = false
+    @State private var navigateToNext = false
+    @State private var navigateBack = false
+    @State private var zodiacSign = ""
+    @State private var zodiacEmoji = ""
     
-    private func calculateZodiacSign(from date: Date) -> String {
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        return formatter
+    }
+    
+    private var canProceed: Bool {
         let calendar = Calendar.current
-        let month = calendar.component(.month, from: date)
-        let day = calendar.component(.day, from: date)
-        
-        switch (month, day) {
-        case (3, 21...31), (4, 1...19):
-            return "aries"
-        case (4, 20...30), (5, 1...20):
-            return "taurus"
-        case (5, 21...31), (6, 1...20):
-            return "gemini"
-        case (6, 21...30), (7, 1...22):
-            return "cancer"
-        case (7, 23...31), (8, 1...22):
-            return "leo"
-        case (8, 23...31), (9, 1...22):
-            return "virgo"
-        case (9, 23...30), (10, 1...22):
-            return "libra"
-        case (10, 23...31), (11, 1...21):
-            return "scorpio"
-        case (11, 22...30), (12, 1...21):
-            return "sagittarius"
-        case (12, 22...31), (1, 1...19):
-            return "capricorn"
-        case (1, 20...31), (2, 1...18):
-            return "aquarius"
-        case (2, 19...29), (3, 1...20):
-            return "pisces"
-        default:
-            return "unknown"
-        }
+        let age = calendar.dateComponents([.year], from: birthDate, to: Date()).year ?? 0
+        return age >= 13
     }
     
     var body: some View {
@@ -47,57 +26,132 @@ struct BirthdayEntryView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 40) {
-                Image("DIML_Logo")
+                // Logo at the top
+                Image("DIML_People_Icon")
                     .resizable()
                     .frame(width: 60, height: 60)
+                    .padding(.top, 60)
                 
+                // Question text
                 Text("When's your birthday?")
-                    .font(.custom("Markazi Text", size: 32))
-                    .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                    .font(.custom("Markazi Text", size: 36))
+                    .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
+                    .padding(.bottom, 10)
                 
-                DatePicker("Birthday", selection: $selectedDate, displayedComponents: .date)
-                    .datePickerStyle(.wheel)
-                    .labelsHidden()
-                    .onChange(of: selectedDate) { newDate in
-                        // Update the zodiac sign whenever the date changes
-                        viewModel.zodiac = calculateZodiacSign(from: newDate)
+                Text("You must be at least 13 years old to use DIML")
+                    .font(.custom("Markazi Text", size: 20))
+                    .foregroundColor(.gray)
+                
+                // Birthday Button
+                Button(action: {
+                    showDatePicker = true
+                }) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 15)
+                            .fill(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 15)
+                                    .stroke(Color.mainBlue, lineWidth: 1)
+                            )
+                        
+                        HStack {
+                            Text(dateFormatter.string(from: birthDate))
+                                .font(.custom("Markazi Text", size: 24))
+                                .foregroundColor(Color.mainBlue)
+                            
+                            if !zodiacSign.isEmpty {
+                                Text(zodiacEmoji)
+                                    .font(.system(size: 24))
+                            }
+                        }
                     }
+                    .frame(height: 56)
+                    .padding(.horizontal, 20)
+                }
+                
+                if !canProceed {
+                    Text("You must be at least 13 years old")
+                        .font(.custom("Markazi Text", size: 16))
+                        .foregroundColor(.red)
+                }
                 
                 Spacer()
                 
-                // Forward arrow only
+                // Navigation Links
+                NavigationLink(destination: PronounSelectionView(), isActive: $navigateBack) { EmptyView() }
+                NavigationLink(destination: BioEntryView(), isActive: $navigateToNext) { EmptyView() }
+                
+                // Navigation arrows
                 HStack {
+                    Button(action: {
+                        navigateBack = true
+                    }) {
+                        Image(systemName: "arrow.left")
+                            .font(.title)
+                            .foregroundColor(Color.mainBlue)
+                    }
+                    
                     Spacer()
                     
                     Button(action: {
-                        // Ensure zodiac is set before proceeding
-                        viewModel.zodiac = calculateZodiacSign(from: selectedDate)
-                        goToNextScreen = true
+                        if canProceed {
+                            // Store the zodiac sign before proceeding
+                            let sign = ZodiacCalculator.getZodiacSign(from: birthDate)
+                            UserDefaults.standard.set(sign, forKey: "profile_zodiac")
+                            navigateToNext = true
+                        }
                     }) {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 24))
-                            .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                            .font(.title)
+                            .foregroundColor(canProceed ? Color.mainBlue : .gray)
                     }
                 }
                 .padding(.horizontal, 40)
-                .padding(.bottom, 20)
-                
-                // Hidden NavLinks for navigation
-                NavigationLink(destination: BioEntryView(), isActive: $goToNextScreen) { EmptyView() }
+                .padding(.bottom, 40)
             }
-            .padding()
+        }
+        .sheet(isPresented: $showDatePicker) {
+            if #available(iOS 16.0, *) {
+                DatePicker("Select your birthday",
+                          selection: $birthDate,
+                          in: ...Date(),
+                          displayedComponents: .date)
+                    .datePickerStyle(.wheel)
+                    .presentationDetents([.height(300)])
+                    .onChange(of: birthDate) { newDate in
+                        let sign = ZodiacCalculator.getZodiacSign(from: newDate)
+                        zodiacSign = sign
+                        zodiacEmoji = ZodiacCalculator.getZodiacEmoji(for: sign)
+                    }
+            } else {
+                DatePicker("Select your birthday",
+                          selection: $birthDate,
+                          in: ...Date(),
+                          displayedComponents: .date)
+                    .datePickerStyle(.wheel)
+                    .onChange(of: birthDate) { newDate in
+                        let sign = ZodiacCalculator.getZodiacSign(from: newDate)
+                        zodiacSign = sign
+                        zodiacEmoji = ZodiacCalculator.getZodiacEmoji(for: sign)
+                    }
+            }
         }
         .navigationBarBackButtonHidden(true)
-        .navigationBarHidden(true)
         .onAppear {
-            // Set initial zodiac sign
-            viewModel.zodiac = calculateZodiacSign(from: selectedDate)
+            // Calculate initial zodiac sign
+            let sign = ZodiacCalculator.getZodiacSign(from: birthDate)
+            zodiacSign = sign
+            zodiacEmoji = ZodiacCalculator.getZodiacEmoji(for: sign)
         }
     }
 }
 
-struct BirthdayEntryView_Previews: PreviewProvider {
-    static var previews: some View {
-        BirthdayEntryView()
+#Preview {
+    if #available(iOS 16.0, *) {
+        NavigationStack {
+            BirthdayEntryView()
+        }
+    } else {
+        // Fallback on earlier versions
     }
 }

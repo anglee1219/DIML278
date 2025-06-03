@@ -1,4 +1,6 @@
 import SwiftUI
+import FirebaseAuth
+import Foundation
 
 struct Friend: Identifiable, Hashable {
     let id = UUID()
@@ -35,6 +37,9 @@ struct GroupSettingsView: View {
         Friend(name: "Alex Kim", username: "@alex"),
         Friend(name: "Sarah Chen", username: "@sarah")
     ]
+    
+    @State private var showFriendProfile = false
+    @State private var selectedFriend: Friend?
     
     let frequencies = ["Every 1 hour", "Every 3 hours", "Every 5 hours", "Every 8 hours"]
     
@@ -138,19 +143,17 @@ struct GroupSettingsView: View {
                                 Spacer()
                                 
                                 // Role badge
-                                if let role = member.role {
-                                    Text(role.rawValue)
-                                        .font(.custom("Markazi Text", size: 14))
-                                        .foregroundColor(role == .influencer ? .orange : .gray)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(role == .influencer ? 
-                                                     Color.orange.opacity(0.2) : 
-                                                     Color.gray.opacity(0.1))
-                                        )
-                                }
+                                Text(member.role.stringValue)
+                                    .font(.custom("Markazi Text", size: 14))
+                                    .foregroundColor(member.role == .influencer ? .orange : .gray)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(member.role == .influencer ? 
+                                                 Color.orange.opacity(0.2) : 
+                                                 Color.gray.opacity(0.1))
+                                    )
                                 
                                 if member.role != .admin {
                                     Button(action: {
@@ -227,7 +230,7 @@ struct GroupSettingsView: View {
             }
         }
         .padding(.top, 20)
-        .background(Color(red: 1, green: 0.988, blue: 0.929))
+        .background(Color(red: 1, green: 0.989, blue: 0.93).ignoresSafeArea())
         .alert("Add Members", isPresented: $showAddConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Add") {
@@ -269,6 +272,16 @@ struct GroupSettingsView: View {
         } message: {
             if let member = memberToRemove {
                 Text("Are you sure you want to remove \(member.name) from the circle?")
+            }
+        }
+        .sheet(isPresented: $showFriendProfile) {
+            if let friend = selectedFriend {
+                FriendProfileView(user: SuggestedUser(
+                    name: friend.name,
+                    username: friend.username ?? "@unknown",
+                    mutualFriends: 0,
+                    source: "Friends"
+                ))
             }
         }
     }
@@ -320,6 +333,13 @@ struct FriendCell: View {
                 }
             }
         }
+    }
+}
+
+struct GroupSettingsView_Previews: PreviewProvider {
+    static var previews: some View {
+        let mockGroup = Group(id: UUID().uuidString, name: "Sample Group")
+        return GroupSettingsView(groupStore: GroupStore(), group: mockGroup)
     }
 }
 
