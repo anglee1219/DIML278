@@ -2,12 +2,14 @@ import Foundation
 import UserNotifications
 
 enum PromptFrequency: String, Codable, CaseIterable {
+    case testing = "Every minute (testing)"
     case hourly = "Every hour"
     case threeHours = "Every 3 hours"
     case sixHours = "Every 6 hours"
     
     var numberOfPrompts: Int {
         switch self {
+        case .testing: return 10 // 10 prompts for testing
         case .hourly: return 12 // Roughly 12 prompts in a 12-hour active day
         case .threeHours: return 4 // 4 prompts in 12 hours
         case .sixHours: return 2 // 2 prompts in 12 hours
@@ -16,9 +18,19 @@ enum PromptFrequency: String, Codable, CaseIterable {
     
     var intervalHours: Int {
         switch self {
+        case .testing: return 0 // Special case for minute intervals
         case .hourly: return 1
         case .threeHours: return 3
         case .sixHours: return 6
+        }
+    }
+    
+    var intervalMinutes: Int {
+        switch self {
+        case .testing: return 1
+        case .hourly: return 60
+        case .threeHours: return 180
+        case .sixHours: return 360
         }
     }
     
@@ -104,6 +116,12 @@ class PromptScheduler {
                 return
             }
             
+            // Handle testing frequency differently
+            if frequency == .testing {
+                self.scheduleTestingPrompts(userId: influencerId, completion: completion)
+                return
+            }
+            
             // Create a dispatch group to track when all notifications are scheduled
             let group = DispatchGroup()
             
@@ -147,6 +165,49 @@ class PromptScheduler {
             group.notify(queue: .main) {
                 completion?()
             }
+        }
+    }
+    
+    private func scheduleTestingPrompts(userId: String, completion: (() -> Void)? = nil) {
+        print("📱 Scheduling testing prompts (every minute)")
+        
+        let group = DispatchGroup()
+        let numberOfPrompts = 10 // Test with 10 prompts
+        
+        for i in 0..<numberOfPrompts {
+            group.enter()
+            
+            let content = UNMutableNotificationContent()
+            content.title = "🧪 Test Prompt #\(i + 1)"
+            content.body = "Time to answer your DIML prompt!"
+            content.sound = .default
+            
+            // Schedule each prompt 1 minute apart, starting from 1 minute from now
+            let trigger = UNTimeIntervalNotificationTrigger(
+                timeInterval: TimeInterval((i + 1) * 60), // Every minute
+                repeats: false
+            )
+            
+            let identifier = "test_prompt_\(userId)_\(i)_\(Date().timeIntervalSince1970)"
+            let request = UNNotificationRequest(
+                identifier: identifier,
+                content: content,
+                trigger: trigger
+            )
+            
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("❌ Error scheduling test prompt \(i + 1): \(error)")
+                } else {
+                    print("✅ Scheduled test prompt \(i + 1) for \(i + 1) minute(s) from now")
+                }
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) {
+            print("🎉 All testing prompts scheduled!")
+            completion?()
         }
     }
     

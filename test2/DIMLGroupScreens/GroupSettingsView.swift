@@ -18,10 +18,11 @@ struct Friend: Identifiable, Hashable {
 }
 
 struct GroupSettingsView: View {
-    @Environment(\.dismiss) var dismiss
     @ObservedObject var groupStore: GroupStore
+    @ObservedObject var entryStore: EntryStore
     @StateObject private var friendsManager = FriendsManager.shared
     var group: Group
+    @Binding var isPresented: Bool
     
     @State private var selectedFrequency: PromptFrequency
     @State private var isMuted: Bool
@@ -33,12 +34,15 @@ struct GroupSettingsView: View {
     @State private var showFriendProfile = false
     @State private var selectedFriend: User?
     @State private var isUpdatingSettings = false
+    @State private var showClearEntriesAlert = false
     
     private let promptScheduler = PromptScheduler.shared
     
-    init(groupStore: GroupStore, group: Group) {
+    init(groupStore: GroupStore, entryStore: EntryStore, group: Group, isPresented: Binding<Bool>) {
         self.groupStore = groupStore
+        self.entryStore = entryStore
         self.group = group
+        self._isPresented = isPresented
         // Initialize state with current group settings
         self._selectedFrequency = State(initialValue: group.promptFrequency)
         self._isMuted = State(initialValue: group.notificationsMuted)
@@ -75,11 +79,41 @@ struct GroupSettingsView: View {
                 influencerId: group.currentInfluencerId
             ) {
                 DispatchQueue.main.async {
-                    isUpdatingSettings = false
+                    self.isUpdatingSettings = false
                 }
             }
         } else {
             isUpdatingSettings = false
+        }
+    }
+    
+    private func updateSettingsAndDismiss() {
+        print("🔧 Starting settings update and dismiss process...")
+        
+        // Update the group with new settings
+        var updatedGroup = group
+        updatedGroup.promptFrequency = selectedFrequency
+        updatedGroup.notificationsMuted = isMuted
+        
+        print("🔧 Updating group in GroupStore...")
+        // Save to GroupStore
+        groupStore.updateGroup(updatedGroup)
+        
+        // Update notification scheduling if current user is the influencer
+        if Auth.auth().currentUser?.uid == group.currentInfluencerId && !isMuted {
+            print("🔧 Scheduling prompts for influencer...")
+            promptScheduler.schedulePrompts(
+                for: selectedFrequency,
+                influencerId: group.currentInfluencerId
+            ) {
+                DispatchQueue.main.async {
+                    print("🔧 Prompts scheduled, dismissing...")
+                    self.isPresented = false
+                }
+            }
+        } else {
+            print("🔧 No prompt scheduling needed, dismissing...")
+            self.isPresented = false
         }
     }
 
@@ -88,7 +122,7 @@ struct GroupSettingsView: View {
             // Header
             HStack {
                 Button("Cancel") {
-                    dismiss()
+                    isPresented = false
                 }
                 .foregroundColor(.gray)
 
@@ -101,12 +135,18 @@ struct GroupSettingsView: View {
                 Spacer()
 
                 Button("Done") {
+                    print("🔧 Done button clicked")
+                    print("🔧 selectedFriends.isEmpty: \(selectedFriends.isEmpty)")
+                    print("🔧 showAddConfirmation: \(showAddConfirmation)")
+                    print("🔧 showRemoveAlert: \(showRemoveAlert)")
+                    
                     if !selectedFriends.isEmpty {
+                        print("🔧 Showing add confirmation alert")
                         showAddConfirmation = true
                     } else {
+                        print("🔧 Calling updateSettingsAndDismiss()")
                         // Save settings before dismissing
-                        updateGroupSettings()
-                        dismiss()
+                        updateSettingsAndDismiss()
                     }
                 }
                 .foregroundColor(selectedFriends.isEmpty ? .gray : Color(red: 0.733, green: 0.424, blue: 0.141))
@@ -170,6 +210,32 @@ struct GroupSettingsView: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(Color(red: 1, green: 0.95, blue: 0.85))
+                            .cornerRadius(10)
+                        }
+                        
+                        // Clear Entries Section (for testing)
+                        Text("Testing")
+                            .font(.custom("Markazi Text", size: 18))
+                            .padding(.top, 16)
+                        
+                        Text("Clear all uploads and entries for testing (\(entryStore.entries.count) entries)")
+                            .font(.custom("Markazi Text", size: 14))
+                            .foregroundColor(.gray)
+                            .padding(.bottom, 4)
+                        
+                        Button(action: {
+                            showClearEntriesAlert = true
+                        }) {
+                            HStack {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                                Text("Clear All Entries")
+                                    .foregroundColor(.red)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.red.opacity(0.1))
                             .cornerRadius(10)
                         }
                         
@@ -353,7 +419,6 @@ struct GroupSettingsView: View {
                 groupStore.updateGroup(updatedGroup)
                 
                 selectedFriends.removeAll()
-                dismiss()
             }
         } message: {
             Text("Add \(selectedFriends.count) member\(selectedFriends.count == 1 ? "" : "s") to the circle?")
@@ -366,13 +431,21 @@ struct GroupSettingsView: View {
                     var updatedGroup = group
                     updatedGroup.members.removeAll { $0.id == member.id }
                     groupStore.updateGroup(updatedGroup)
-                    dismiss()
                 }
             }
         } message: {
             if let member = memberToRemove {
                 Text("Are you sure you want to remove \(member.name) from the circle?")
             }
+        }
+        .alert("Clear All Entries", isPresented: $showClearEntriesAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear All", role: .destructive) {
+                entryStore.clearAllEntries()
+                print("🗑️ All entries cleared for testing")
+            }
+        } message: {
+            Text("This will permanently delete all \(entryStore.entries.count) entries for this group. This action cannot be undone.")
         }
         .sheet(isPresented: $showFriendProfile) {
             if let friend = selectedFriend {
@@ -435,12 +508,13 @@ struct FriendCell: View {
 struct GroupSettingsView_Previews: PreviewProvider {
     static var previews: some View {
         let mockGroup = Group(id: UUID().uuidString, name: "Sample Group", promptFrequency: .sixHours, notificationsMuted: false)
-        return GroupSettingsView(groupStore: GroupStore(), group: mockGroup)
+        return GroupSettingsView(groupStore: GroupStore(), entryStore: EntryStore(groupId: mockGroup.id), group: mockGroup, isPresented: .constant(true))
     }
 }
 
 #Preview {
-    GroupSettingsView(groupStore: GroupStore(), group: Group(id: UUID().uuidString, name: "Sample Group", promptFrequency: .sixHours, notificationsMuted: false))
+    let mockGroup = Group(id: UUID().uuidString, name: "Sample Group", promptFrequency: .sixHours, notificationsMuted: false)
+    GroupSettingsView(groupStore: GroupStore(), entryStore: EntryStore(groupId: mockGroup.id), group: mockGroup, isPresented: .constant(true))
 }
 
 //

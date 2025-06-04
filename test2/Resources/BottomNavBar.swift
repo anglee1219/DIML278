@@ -11,6 +11,7 @@ struct BottomNavBar: View {
     var onCameraTap: () -> Void
     var isVisible: Bool = true
     var isInfluencer: Bool = false
+    var shouldBounceCamera: Bool = false
     @State private var bounceOffset: CGFloat = 0
 
     var body: some View {
@@ -34,15 +35,15 @@ struct BottomNavBar: View {
                 }) {
                     ZStack {
                     Circle()
-                            .stroke(isInfluencer ? Color.yellow : Color.gray, lineWidth: 2)
+                            .stroke((isInfluencer || shouldBounceCamera) ? Color.yellow : Color.gray, lineWidth: 2)
                         .frame(width: 50, height: 50)
                         
                             Image(systemName: "camera")
-                            .foregroundColor(isInfluencer ? .yellow : .gray)
+                            .foregroundColor((isInfluencer || shouldBounceCamera) ? .yellow : .gray)
                     }
                     .offset(y: bounceOffset)
                     .animation(
-                        isInfluencer ?
+                        (isInfluencer || shouldBounceCamera) ?
                             Animation
                                 .easeInOut(duration: 0.6)
                                 .repeatForever(autoreverses: true) :
@@ -51,12 +52,15 @@ struct BottomNavBar: View {
                     )
                 }
                 .onAppear {
-                    if isInfluencer {
+                    if isInfluencer || shouldBounceCamera {
                         bounceOffset = -15
                     }
                 }
                 .onChange(of: isInfluencer) { newValue in
-                    bounceOffset = newValue ? -15 : 0
+                    bounceOffset = (newValue || shouldBounceCamera) ? -15 : 0
+                }
+                .onChange(of: shouldBounceCamera) { newValue in
+                    bounceOffset = (newValue || isInfluencer) ? -15 : 0
                 }
 
                 Spacer()

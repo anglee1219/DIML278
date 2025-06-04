@@ -135,7 +135,7 @@ extension User: Hashable {
     }
 }
 
-struct Group: Identifiable, Codable {
+struct Group: Identifiable, Codable, Equatable {
     var id: String
     var name: String
     var members: [User]
@@ -176,6 +176,17 @@ struct Group: Identifiable, Codable {
         // Backwards compatibility - use default values if fields don't exist
         promptFrequency = try container.decodeIfPresent(PromptFrequency.self, forKey: .promptFrequency) ?? .sixHours
         notificationsMuted = try container.decodeIfPresent(Bool.self, forKey: .notificationsMuted) ?? false
+    }
+    
+    // Equatable conformance
+    static func == (lhs: Group, rhs: Group) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.name == rhs.name &&
+               lhs.members == rhs.members &&
+               lhs.currentInfluencerId == rhs.currentInfluencerId &&
+               lhs.date == rhs.date &&
+               lhs.promptFrequency == rhs.promptFrequency &&
+               lhs.notificationsMuted == rhs.notificationsMuted
     }
 }
 
@@ -218,7 +229,7 @@ enum FrameSize: String, CaseIterable, Codable {
     }
 }
 
-struct DIMLEntry: Identifiable {
+struct DIMLEntry: Identifiable, Equatable {
     let id: String
     let userId: String
     let prompt: String
@@ -251,13 +262,35 @@ struct DIMLEntry: Identifiable {
         self.reactions = reactions
         self.frameSize = frameSize ?? FrameSize.random
     }
+    
+    // Equatable conformance
+    static func == (lhs: DIMLEntry, rhs: DIMLEntry) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.userId == rhs.userId &&
+               lhs.prompt == rhs.prompt &&
+               lhs.response == rhs.response &&
+               lhs.imageURL == rhs.imageURL &&
+               lhs.timestamp == rhs.timestamp &&
+               lhs.comments == rhs.comments &&
+               lhs.reactions == rhs.reactions &&
+               lhs.frameSize == rhs.frameSize
+        // Note: We don't compare UIImage since it's not Equatable
+    }
 }
 
-struct Comment: Identifiable, Codable {
+struct Comment: Identifiable, Codable, Equatable {
     let id: String
     let userId: String
     let text: String
     let timestamp: Date
+    
+    // Equatable conformance
+    static func == (lhs: Comment, rhs: Comment) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.userId == rhs.userId &&
+               lhs.text == rhs.text &&
+               lhs.timestamp == rhs.timestamp
+    }
 }
 
 struct SuggestedUser: Identifiable, Hashable {

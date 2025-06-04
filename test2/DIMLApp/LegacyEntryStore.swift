@@ -1,6 +1,6 @@
 import SwiftUI
 
-class EntryStore: ObservableObject {
+class LegacyEntryStore: ObservableObject {
     @Published var entries: [DIMLEntry] = []
     private let groupId: String
     

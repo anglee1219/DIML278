@@ -19,7 +19,7 @@
 		7D5B416D2DF027D1006A6528 /* FirebaseAuthCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = 7D5B416C2DF027D1006A6528 /* FirebaseAuthCombine-Community */; };
 		7D5B416F2DF027D1006A6528 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7D5B416E2DF027D1006A6528 /* FirebaseCore */; };
 		7D6537AE2DE87D0300C7E795 /* DIMLView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537A92DE87D0300C7E795 /* DIMLView.swift */; };
-		7D6537AF2DE87D0300C7E795 /* EntryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537AA2DE87D0300C7E795 /* EntryStore.swift */; };
+		7D6537AF2DE87D0300C7E795 /* LegacyEntryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537AA2DE87D0300C7E795 /* LegacyEntryStore.swift */; };
 		7D6537B02DE87D0300C7E795 /* PromptCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537AC2DE87D0300C7E795 /* PromptCard.swift */; };
 		7D6537B42DE87D0300C7E795 /* AddEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537A62DE87D0300C7E795 /* AddEntryView.swift */; };
 		7D6537B92DE880E000C7E795 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B72DE880E000C7E795 /* Models.swift */; };
@@ -51,13 +51,19 @@
 		EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1B2DE523B200C36E32 /* test2App.swift */; };
 		EDD7AA1E2DE523B200C36E32 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1D2DE523B200C36E32 /* ContentView.swift */; };
 		EDD7AA232DE523B400C36E32 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EDD7AA222DE523B400C36E32 /* Preview Assets.xcassets */; };
+		7D6537B92DE880E000C7E795 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B72DE880E000C7E795 /* Models.swift */; };
+		7D6537BA2DE880E000C7E795 /* GroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B62DE880E000C7E795 /* GroupView.swift */; };
+		7D6537BB2DE880E000C7E795 /* EntryInteractionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */; };
+		7D6537BC2DE880E100C7E795 /* EntryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B12DE880E100C7E795 /* EntryStore.swift */; };
+		7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BC2DE8815F00C7E795 /* GroupViewWrapper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		7D6537A62DE87D0300C7E795 /* AddEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEntryView.swift; sourceTree = "<group>"; };
 		7D6537A92DE87D0300C7E795 /* DIMLView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DIMLView.swift; sourceTree = "<group>"; };
-		7D6537AA2DE87D0300C7E795 /* EntryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryStore.swift; sourceTree = "<group>"; };
+		7D6537AA2DE87D0300C7E795 /* LegacyEntryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyEntryStore.swift; sourceTree = "<group>"; };
 		7D6537AC2DE87D0300C7E795 /* PromptCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCard.swift; sourceTree = "<group>"; };
+		7D6537B12DE880E100C7E795 /* EntryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryStore.swift; sourceTree = "<group>"; };
 		7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryInteractionView.swift; sourceTree = "<group>"; };
 		7D6537B62DE880E000C7E795 /* GroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupView.swift; sourceTree = "<group>"; };
 		7D6537B72DE880E000C7E795 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -122,9 +128,7 @@
 		7D6537AD2DE87D0300C7E795 /* DIMLApp */ = {
 			isa = PBXGroup;
 			children = (
-				7D6537A62DE87D0300C7E795 /* AddEntryView.swift */,
-				7D6537A92DE87D0300C7E795 /* DIMLView.swift */,
-				7D6537AA2DE87D0300C7E795 /* EntryStore.swift */,
+				7D6537AA2DE87D0300C7E795 /* LegacyEntryStore.swift */,
 				7D6537AC2DE87D0300C7E795 /* PromptCard.swift */,
 			);
 			path = DIMLApp;
@@ -138,6 +142,9 @@
 				7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */,
 				7D6537B62DE880E000C7E795 /* GroupView.swift */,
 				7D6537B72DE880E000C7E795 /* Models.swift */,
+				7D6537A62DE87D0300C7E795 /* AddEntryView.swift */,
+				7D6537A92DE87D0300C7E795 /* DIMLView.swift */,
+				7D6537B12DE880E100C7E795 /* EntryStore.swift */,
 			);
 			path = DIMLGroup;
 			sourceTree = "<group>";
@@ -313,10 +320,11 @@
 				ED432CB32DEEAE6200A98660 /* FriendsManager.swift in Sources */,
 				ED98B07D2DEAD54700072A68 /* TopNavBar.swift in Sources */,
 				ED6680972DE999A2004E63A8 /* MainTabView.swift in Sources */,
-				7D6537AF2DE87D0300C7E795 /* EntryStore.swift in Sources */,
+				7D6537AF2DE87D0300C7E795 /* LegacyEntryStore.swift in Sources */,
 				ED98B0932DEB9E4D00072A68 /* GroupSettingsView.swift in Sources */,
 				7D6537B02DE87D0300C7E795 /* PromptCard.swift in Sources */,
 				7D6537B42DE87D0300C7E795 /* AddEntryView.swift in Sources */,
+				7D6537BC2DE880E100C7E795 /* EntryStore.swift in Sources */,
 				7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */,
 				ED432CB62DEEAFD200A98660 /* User.swift in Sources */,
 				ED432D342DEFC77F00A98660 /* StorageManager.swift in Sources */,

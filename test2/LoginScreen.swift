@@ -2,7 +2,7 @@ import SwiftUI
 
 struct LoginScreen: View {
     @StateObject private var authManager = AuthenticationManager.shared
-    @StateObject private var store = EntryStore()
+    @StateObject private var store = LegacyEntryStore()
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var isPressed = false
