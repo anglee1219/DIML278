@@ -330,8 +330,8 @@ struct FriendCell: View {
                         .foregroundColor(.black)
                     if let username = friend.username {
                         Text(username)
-                            .font(.custom("Markazi Text", size: 14))
-                            .foregroundColor(.gray)
+                        .font(.custom("Markazi Text", size: 14))
+                        .foregroundColor(.gray)
                     }
                 }
             }

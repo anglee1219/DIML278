@@ -293,42 +293,42 @@ struct GroupListView: View {
                                                     }
                                                 }
                                             }) {
-                                                HStack(spacing: 12) {
-                                                    HStack(spacing: -8) {
-                                                        ForEach(0..<min(3, group.members.count), id: \.self) { _ in
-                                                            Circle()
-                                                                .fill(Color.gray.opacity(0.3))
-                                                                .frame(width: 40, height: 40)
-                                                        }
-                                                    }
-                                                    
-                                                    VStack(alignment: .leading) {
-                                                        Text(group.name)
-                                                            .font(.custom("Fredoka-Regular", size: 18))
-                                                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                                                        
-                                                        Text("Check out what's happening!")
-                                                            .font(.custom("Markazi Text", size: 16))
-                                                            .foregroundColor(.gray)
-                                                    }
-                                                    
-                                                    Spacer()
-                                                    
-                                                    VStack(alignment: .trailing) {
-                                                        Text("10:28 PM")
-                                                            .font(.footnote)
-                                                            .foregroundColor(.gray)
-                                                        
-                                                        Image(systemName: "chevron.right")
-                                                            .foregroundColor(.gray.opacity(0.6))
+                                            HStack(spacing: 12) {
+                                                HStack(spacing: -8) {
+                                                    ForEach(0..<min(3, group.members.count), id: \.self) { _ in
+                                                        Circle()
+                                                            .fill(Color.gray.opacity(0.3))
+                                                            .frame(width: 40, height: 40)
                                                     }
                                                 }
-                                                .padding(.horizontal)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
-                                                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-                                                )
+                                                
+                                                VStack(alignment: .leading) {
+                                                    Text(group.name)
+                                                        .font(.custom("Fredoka-Regular", size: 18))
+                                                        .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                                                    
+                                                    Text("Check out what's happening!")
+                                                        .font(.custom("Markazi Text", size: 16))
+                                                        .foregroundColor(.gray)
+                                                }
+                                                
+                                                Spacer()
+                                                
+                                                VStack(alignment: .trailing) {
+                                                    Text("10:28 PM")
+                                                        .font(.footnote)
+                                                        .foregroundColor(.gray)
+                                                    
+                                                    Image(systemName: "chevron.right")
+                                                        .foregroundColor(.gray.opacity(0.6))
+                                                }
+                                            }
+                                            .padding(.horizontal)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
+                                                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                                            )
                                             }
                                             .buttonStyle(PlainButtonStyle())
                                         }

@@ -188,9 +188,9 @@ class ProfileViewModel: ObservableObject {
                         guard let data = data,
                               let self = self else { return }
                         
-                        DispatchQueue.main.async {
+                            DispatchQueue.main.async {
                             self.profileImageData = data
-                            // Cache the image data
+                                // Cache the image data
                             if let userId = Auth.auth().currentUser?.uid {
                                 UserDefaults.standard.set(data, forKey: "cached_profile_image_\(userId)")
                             }

@@ -126,6 +126,24 @@ class PromptManager {
         return nil
     }
     
+    func getSeededPrompt<T: RandomNumberGenerator>(for timeOfDay: TimeOfDay, using generator: inout T) -> String? {
+        let prompts: [String]
+        switch timeOfDay {
+        case .morning:
+            prompts = morningPrompts
+        case .afternoon:
+            prompts = afternoonPrompts
+        case .night:
+            prompts = nightPrompts
+        }
+        
+        guard !prompts.isEmpty else { return nil }
+        
+        // Use seeded random to get consistent prompt selection
+        let randomIndex = Int.random(in: 0..<prompts.count, using: &generator)
+        return prompts[randomIndex]
+    }
+    
     func resetUsedPrompts() {
         usedPrompts.removeAll()
     }

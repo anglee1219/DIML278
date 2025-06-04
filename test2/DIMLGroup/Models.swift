@@ -154,14 +154,78 @@ struct Group: Identifiable, Codable {
     }
 }
 
+// Frame Size for dynamic post layouts
+enum FrameSize: String, CaseIterable, Codable {
+    case small = "small"
+    case medium = "medium"
+    case large = "large"
+    case extraLarge = "extraLarge"
+    
+    var height: CGFloat {
+        switch self {
+        case .small:
+            return 200
+        case .medium:
+            return 280
+        case .large:
+            return 320
+        case .extraLarge:
+            return 360
+        }
+    }
+    
+    var displayName: String {
+        switch self {
+        case .small:
+            return "Small"
+        case .medium:
+            return "Medium"
+        case .large:
+            return "Large"
+        case .extraLarge:
+            return "Extra Large"
+        }
+    }
+    
+    // Get a random frame size
+    static var random: FrameSize {
+        return FrameSize.allCases.randomElement() ?? .medium
+    }
+}
+
 struct DIMLEntry: Identifiable {
     let id: String
     let userId: String
     let prompt: String
     let response: String
     let image: UIImage?
+    let imageURL: String?
+    let timestamp: Date
     var comments: [Comment]
     var reactions: [String: Int]
+    let frameSize: FrameSize
+    
+    init(id: String = UUID().uuidString, 
+         userId: String, 
+         prompt: String, 
+         response: String, 
+         image: UIImage? = nil, 
+         imageURL: String? = nil,
+         timestamp: Date = Date(),
+         comments: [Comment] = [], 
+         reactions: [String: Int] = [:], 
+         frameSize: FrameSize? = nil) {
+        self.id = id
+        self.userId = userId
+        self.prompt = prompt
+        self.response = response
+        self.image = image
+        self.imageURL = imageURL
+        self.timestamp = timestamp
+        self.comments = comments
+        self.reactions = reactions
+        self.frameSize = frameSize ?? FrameSize.random
+    }
 }
 
 struct Comment: Identifiable {
