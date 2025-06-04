@@ -95,13 +95,8 @@ class PromptScheduler {
     }()
     
     private init() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound], completionHandler: { granted, error in
-            if granted {
-                print("Notification permission granted")
-            } else if let error = error {
-                print("Error requesting notification permission: \(error)")
-            }
-        })
+        // Permission is now handled in AppDelegate, no need to request again here
+        print("🔔 PromptScheduler initialized")
     }
     
     func schedulePrompts(for frequency: PromptFrequency, influencerId: String, completion: (() -> Void)? = nil) {
@@ -330,6 +325,54 @@ class PromptScheduler {
             // Small delay to ensure notifications are removed before scheduling new ones
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 completion()
+            }
+        }
+    }
+    
+    // Send immediate notification when new prompt is unlocked
+    func sendPromptUnlockedNotification(prompt: String, userId: String) {
+        print("📱 sendPromptUnlockedNotification called")
+        print("📱 prompt: '\(prompt)'")
+        print("📱 userId: '\(userId)'")
+        
+        // Send notification immediately
+        let content = UNMutableNotificationContent()
+        content.title = "🔓 New Prompt Unlocked!"
+        content.body = prompt
+        content.sound = .default
+        content.badge = 1
+        
+        print("📱 Creating notification with title: '\(content.title)'")
+        print("📱 Creating notification with body: '\(content.body)'")
+        
+        // Send immediately with a 1 second delay
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+        
+        let identifier = "prompt_unlocked_\(userId)_\(Date().timeIntervalSince1970)"
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: trigger
+        )
+        
+        print("📱 Adding notification request with identifier: \(identifier)")
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("📱 ❌ Error sending prompt unlock notification: \(error)")
+                print("📱 ❌ Error details: \(error.localizedDescription)")
+            } else {
+                print("📱 ✅ Successfully added prompt unlock notification to queue")
+                print("📱 ✅ Notification will appear in 1 second")
+                
+                // Double-check that the notification was actually scheduled
+                UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                    let promptUnlockRequests = requests.filter { $0.identifier.contains("prompt_unlocked") }
+                    print("📱 📋 Total pending prompt unlock notifications: \(promptUnlockRequests.count)")
+                    for req in promptUnlockRequests {
+                        print("📱 📋 - \(req.identifier): '\(req.content.title)' - '\(req.content.body)'")
+                    }
+                }
             }
         }
     }

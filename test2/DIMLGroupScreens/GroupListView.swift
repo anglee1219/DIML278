@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import FirebaseAuth
 
 // Rebecca's initial
 /*struct GroupListView: View {
@@ -54,6 +55,8 @@ struct GroupListView: View {
     @State private var offset: CGFloat = 0
     @State private var isNavigating = false
     @State private var keyboardVisible = false
+    @State private var statusRefreshTimer: Timer?
+    @State private var lastRefresh = Date() // Force view updates for status changes
     
     private func handleInitialSetup() {
         if groupStore.groups.isEmpty {
@@ -75,6 +78,106 @@ struct GroupListView: View {
             }
         default:
             showPermissionAlert = true
+        }
+    }
+    
+    // Add function to get dynamic status for each group
+    private func getGroupStatus(for group: Group) -> (message: String, color: Color) {
+        // Use lastRefresh to ensure this recalculates when timer triggers
+        let _ = lastRefresh
+        
+        let currentUserId = Auth.auth().currentUser?.uid ?? ""
+        let isInfluencer = group.currentInfluencerId == currentUserId
+        
+        // Create a mock entry store to check for recent activity (in real app, this would be from GroupStore)
+        let entryStore = EntryStore(groupId: group.id)
+        
+        // Get the most recent entry to see what was just shared
+        if let mostRecentEntry = entryStore.entries.max(by: { $0.timestamp < $1.timestamp }) {
+            let influencerName = group.members.first(where: { $0.id == group.currentInfluencerId })?.name ?? "Someone"
+            
+            // Check if next prompt should be available
+            let nextPromptTime = calculateNextPromptTime(for: group, lastEntry: mostRecentEntry)
+            let isNewPromptReady = nextPromptTime <= Date()
+            
+            if isNewPromptReady && isInfluencer {
+                return ("✨ New prompt ready to answer!", Color(red: 1.0, green: 0.815, blue: 0.0))
+            } else if isNewPromptReady && !isInfluencer {
+                return ("👀 Check for new updates!", .blue)
+            } else {
+                // Show what was recently shared
+                let timeSince = Date().timeIntervalSince(mostRecentEntry.timestamp)
+                let prompt = mostRecentEntry.prompt
+                
+                // Create a more engaging description based on the prompt
+                let activityDescription = getActivityDescription(prompt: prompt, influencerName: influencerName, isInfluencer: isInfluencer)
+                
+                if timeSince < 3600 { // Within last hour
+                    return (activityDescription, .green)
+                } else if timeSince < 86400 { // Within last day
+                    let hours = Int(timeSince / 3600)
+                    return ("\(activityDescription) • \(hours)h ago", .gray)
+                } else {
+                    let days = Int(timeSince / 86400)
+                    return ("\(activityDescription) • \(days)d ago", .gray)
+                }
+            }
+        } else {
+            // No entries yet
+            if isInfluencer {
+                return ("🌟 Start your first DIML!", Color(red: 1.0, green: 0.815, blue: 0.0))
+            } else {
+                return ("👋 Waiting for first post!", .gray)
+            }
+        }
+    }
+    
+    private func getActivityDescription(prompt: String, influencerName: String, isInfluencer: Bool) -> String {
+        let name = isInfluencer ? "You" : influencerName
+        
+        // Create contextual descriptions based on prompt content
+        let lowerPrompt = prompt.lowercased()
+        
+        if lowerPrompt.contains("morning") {
+            return "\(name) shared their morning"
+        } else if lowerPrompt.contains("coffee") || lowerPrompt.contains("drink") {
+            return "\(name) showed us their drink"
+        } else if lowerPrompt.contains("workout") || lowerPrompt.contains("exercise") || lowerPrompt.contains("gym") {
+            return "\(name) shared their workout"
+        } else if lowerPrompt.contains("food") || lowerPrompt.contains("eat") || lowerPrompt.contains("meal") {
+            return "\(name) showed us their meal"
+        } else if lowerPrompt.contains("outfit") || lowerPrompt.contains("wear") || lowerPrompt.contains("clothes") {
+            return "\(name) shared their outfit"
+        } else if lowerPrompt.contains("music") || lowerPrompt.contains("song") || lowerPrompt.contains("listen") {
+            return "\(name) shared their music"
+        } else if lowerPrompt.contains("work") || lowerPrompt.contains("office") || lowerPrompt.contains("meeting") {
+            return "\(name) showed us their work"
+        } else if lowerPrompt.contains("friend") || lowerPrompt.contains("people") || lowerPrompt.contains("hang") {
+            return "\(name) shared time with friends"
+        } else if lowerPrompt.contains("color") || lowerPrompt.contains("feeling") || lowerPrompt.contains("mood") {
+            return "\(name) shared their vibe"
+        } else if lowerPrompt.contains("home") || lowerPrompt.contains("room") || lowerPrompt.contains("space") {
+            return "\(name) showed us their space"
+        } else if lowerPrompt.contains("outside") || lowerPrompt.contains("walk") || lowerPrompt.contains("nature") {
+            return "\(name) shared their adventure"
+        } else if lowerPrompt.contains("evening") || lowerPrompt.contains("night") {
+            return "\(name) shared their evening"
+        } else if lowerPrompt.contains("afternoon") {
+            return "\(name) shared their afternoon"
+        } else {
+            // Generic fallback
+            return "\(name) shared their day"
+        }
+    }
+    
+    private func calculateNextPromptTime(for group: Group, lastEntry: DIMLEntry) -> Date {
+        let calendar = Calendar.current
+        let intervalMinutes = group.promptFrequency.intervalMinutes
+        
+        if group.promptFrequency == .testing {
+            return calendar.date(byAdding: .minute, value: 1, to: lastEntry.timestamp) ?? lastEntry.timestamp
+        } else {
+            return calendar.date(byAdding: .minute, value: intervalMinutes, to: lastEntry.timestamp) ?? lastEntry.timestamp
         }
     }
     
@@ -204,20 +307,6 @@ struct GroupListView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 10)
                 
-                // Test Button
-                Button("Test Prompt System") {
-                    // Test the prompt loading and selection
-                    PromptManager.shared.testPromptSystem()
-                    
-                    // Test the scheduler
-                    PromptScheduler.shared.testScheduler()
-                }
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-                .padding(.top, 10)
-
                 Divider()
                     .padding(.top, 10)
                     .padding(.horizontal, 24)
@@ -292,9 +381,10 @@ struct GroupListView: View {
                                                             .font(.custom("Fredoka-Regular", size: 18))
                                                             .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
                                                         
-                                                        Text("Check out what's happening!")
+                                                        let status = getGroupStatus(for: group)
+                                                        Text(status.message)
                                                             .font(.custom("Markazi Text", size: 16))
-                                                            .foregroundColor(.gray)
+                                                            .foregroundColor(status.color)
                                                     }
                                                     
                                                     Spacer()
@@ -425,6 +515,15 @@ struct GroupListView: View {
             .onAppear {
                 handleInitialSetup()
                 
+                // Start status refresh timer
+                statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+                    // Force view refresh by updating a state variable
+                    DispatchQueue.main.async {
+                        // This will trigger a re-render and update the status messages
+                        lastRefresh = Date()
+                    }
+                }
+                
                 // Setup keyboard notifications
                 NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in
                     withAnimation {
@@ -436,6 +535,11 @@ struct GroupListView: View {
                         keyboardVisible = false
                     }
                 }
+            }
+            .onDisappear {
+                // Stop the timer when view disappears
+                statusRefreshTimer?.invalidate()
+                statusRefreshTimer = nil
             }
         } else {
             // Fallback on earlier versions
