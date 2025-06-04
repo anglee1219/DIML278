@@ -3,7 +3,7 @@ import SwiftUI
 struct AccountPrivacyView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var viewModel = ProfileViewModel.shared
-    @State private var email: String = "Rebecca" // This should be loaded from user data
+    @State private var email: String = UserDefaults.standard.string(forKey: "profile_email") ?? ""
     @State private var showResetPassword = false
     
     var body: some View {
@@ -58,6 +58,7 @@ struct AccountPrivacyView: View {
                                     .textContentType(.emailAddress)
                                     .keyboardType(.emailAddress)
                                     .autocapitalization(.none)
+                                    .disabled(true) // Email should not be editable
                                 
                                 Divider()
                                     .frame(height: 1)

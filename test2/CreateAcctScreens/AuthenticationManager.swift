@@ -224,4 +224,32 @@ class AuthenticationManager: ObservableObject {
             completion(error)
         }
     }
+    
+    func updatePassword(currentPassword: String, newPassword: String, completion: @escaping (Error?) -> Void) {
+        guard let user = Auth.auth().currentUser,
+              let email = user.email else {
+            completion(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user found"]))
+            return
+        }
+        
+        // First, reauthenticate the user
+        let credential = EmailAuthProvider.credential(withEmail: email, password: currentPassword)
+        user.reauthenticate(with: credential) { _, error in
+            if let error = error {
+                completion(error)
+                return
+            }
+            
+            // Then update the password
+            user.updatePassword(to: newPassword) { error in
+                if let error = error {
+                    completion(error)
+                    return
+                }
+                
+                // Update was successful
+                completion(nil)
+            }
+        }
+    }
 } 
