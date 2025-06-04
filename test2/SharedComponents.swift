@@ -1,10 +1,8 @@
 import SwiftUI
 
 // MARK: - Shared Text Field Style
-public struct UnderlineTextFieldStyle: TextFieldStyle {
-    public init() {}
-    
-    public func _body(configuration: TextField<Self._Label>) -> some View {
+struct UnderlineTextFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
         VStack {
             configuration
                 .font(.custom("Markazi Text", size: 18))
@@ -16,16 +14,11 @@ public struct UnderlineTextFieldStyle: TextFieldStyle {
 }
 
 // MARK: - Shared Requirement Text Component
-public struct RequirementText: View {
+struct RequirementText: View {
     let text: String
     let isPassed: Bool
     
-    public init(text: String, isPassed: Bool) {
-        self.text = text
-        self.isPassed = isPassed
-    }
-    
-    public var body: some View {
+    var body: some View {
         HStack {
             Image(systemName: isPassed ? "checkmark.circle.fill" : "circle")
                 .foregroundColor(isPassed ? Color(red: 0.455, green: 0.506, blue: 0.267) : .gray)

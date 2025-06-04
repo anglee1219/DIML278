@@ -112,7 +112,6 @@ struct CreateProfileView: View {
     }
 }
 
-// Custom ViewModifier for placeholder
 struct PlaceholderStyle: ViewModifier {
     var showPlaceHolder: Bool
     var placeholder: AnyView
