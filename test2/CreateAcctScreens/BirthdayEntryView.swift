@@ -95,9 +95,10 @@ struct BirthdayEntryView: View {
                     
                     Button(action: {
                         if canProceed {
-                            // Store the zodiac sign before proceeding
+                            // Store both the zodiac sign and birthday
                             let sign = ZodiacCalculator.getZodiacSign(from: birthDate)
                             UserDefaults.standard.set(sign, forKey: "profile_zodiac")
+                            UserDefaults.standard.set(birthDate, forKey: "profile_birthday")
                             navigateToNext = true
                         }
                     }) {

@@ -25,6 +25,7 @@
 		ED432CB02DEEAB3E00A98660 /* FriendRequestManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED432CAE2DEEAB3E00A98660 /* FriendRequestManager.swift */; };
 		ED432CB32DEEAE6200A98660 /* FriendsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED432CB22DEEAE6200A98660 /* FriendsManager.swift */; };
 		ED432CB62DEEAFD200A98660 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED432CB42DEEAFD200A98660 /* User.swift */; };
+		ED432D342DEFC77F00A98660 /* StorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED432D332DEFC77F00A98660 /* StorageManager.swift */; };
 		ED6680972DE999A2004E63A8 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6680962DE9999A004E63A8 /* MainTabView.swift */; };
 		ED98B0742DEAA45B00072A68 /* AddFriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */; };
 		ED98B07D2DEAD54700072A68 /* TopNavBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B07C2DEAD54300072A68 /* TopNavBar.swift */; };
@@ -57,6 +58,7 @@
 		ED432CAE2DEEAB3E00A98660 /* FriendRequestManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendRequestManager.swift; sourceTree = "<group>"; };
 		ED432CB22DEEAE6200A98660 /* FriendsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendsManager.swift; sourceTree = "<group>"; };
 		ED432CB42DEEAFD200A98660 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		ED432D332DEFC77F00A98660 /* StorageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageManager.swift; sourceTree = "<group>"; };
 		ED6680962DE9999A004E63A8 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddFriendsView.swift; sourceTree = "<group>"; };
 		ED98B07C2DEAD54300072A68 /* TopNavBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopNavBar.swift; sourceTree = "<group>"; };
@@ -109,6 +111,7 @@
 		7D6537B82DE880E000C7E795 /* DIMLGroup */ = {
 			isa = PBXGroup;
 			children = (
+				ED432D332DEFC77F00A98660 /* StorageManager.swift */,
 				7D6537BC2DE8815F00C7E795 /* GroupViewWrapper.swift */,
 				7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */,
 				7D6537B62DE880E000C7E795 /* GroupView.swift */,
@@ -294,6 +297,7 @@
 				7D6537B42DE87D0300C7E795 /* AddEntryView.swift in Sources */,
 				7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */,
 				ED432CB62DEEAFD200A98660 /* User.swift in Sources */,
+				ED432D342DEFC77F00A98660 /* StorageManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

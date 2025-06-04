@@ -1,3 +1,6 @@
+import SwiftUI
+import AVFoundation
+
 // Rebecca's initial
 /*struct GroupListView: View {
     @State private var groups: [Group] = []
@@ -35,10 +38,9 @@
     }
 }
 */
-import SwiftUI
-
 struct GroupListView: View {
     @StateObject private var groupStore = GroupStore()
+    @StateObject private var authManager = AuthenticationManager.shared
     @State private var showingCreateGroup = false
     @State private var showingAddFriends = false
     @State private var showCamera = false
@@ -52,6 +54,30 @@ struct GroupListView: View {
     @State private var swipedGroupId: String?
     @State private var offset: CGFloat = 0
     @State private var isNavigating = false
+    @State private var keyboardVisible = false
+    
+    private func handleInitialSetup() {
+        if groupStore.groups.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                showingCreateGroup = true
+            }
+        }
+    }
+    
+    private func checkCameraPermission() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    self.showCamera = granted
+                }
+            }
+        default:
+            showPermissionAlert = true
+        }
+    }
     
     struct AnimatedMoonView: View {
         @Binding var isRefreshing: Bool
@@ -252,68 +278,59 @@ struct GroupListView: View {
                                         
                                         // Main Content
                                         HStack {
-                                            NavigationLink(
-                                                destination: GroupDetailView(group: group, groupStore: groupStore),
-                                                isActive: Binding(
-                                                    get: { selectedGroup?.id == group.id },
-                                                    set: { isActive in
-                                                        if !isActive {
-                                                            selectedGroup = nil
-                                                        }
-                                                    }
-                                                )
-                                            ) {
-                                                EmptyView()
-                                            }
-                                            .opacity(0)
-                                            
-                                            HStack(spacing: 12) {
-                                                HStack(spacing: -8) {
-                                                    ForEach(0..<min(3, group.members.count), id: \.self) { _ in
-                                                        Circle()
-                                                            .fill(Color.gray.opacity(0.3))
-                                                            .frame(width: 40, height: 40)
-                                                    }
-                                                }
-                                                
-                                                VStack(alignment: .leading) {
-                                                    Text(group.name)
-                                                        .font(.custom("Fredoka-Regular", size: 18))
-                                                        .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                                                    
-                                                    Text("Check out what's happening!")
-                                                        .font(.custom("Markazi Text", size: 16))
-                                                        .foregroundColor(.gray)
-                                                }
-                                                
-                                                Spacer()
-                                                
-                                                VStack(alignment: .trailing) {
-                                                    Text("10:28 PM")
-                                                        .font(.footnote)
-                                                        .foregroundColor(.gray)
-                                                    
-                                                    Image(systemName: "chevron.right")
-                                                        .foregroundColor(.gray.opacity(0.6))
-                                                }
-                                            }
-                                            .padding(.horizontal)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
-                                                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-                                            )
-                                            .contentShape(Rectangle())
-                                            .onTapGesture {
+                                            Button(action: {
                                                 if swipedGroupId == group.id {
                                                     withAnimation {
                                                         swipedGroupId = nil
                                                         offset = 0
                                                     }
                                                 } else {
-                                                    selectedGroup = group
+                                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                                                       let window = windowScene.windows.first {
+                                                        window.rootViewController = UIHostingController(
+                                                            rootView: GroupDetailView(group: group, groupStore: groupStore)
+                                                        )
+                                                    }
                                                 }
+                                            }) {
+                                                HStack(spacing: 12) {
+                                                    HStack(spacing: -8) {
+                                                        ForEach(0..<min(3, group.members.count), id: \.self) { _ in
+                                                            Circle()
+                                                                .fill(Color.gray.opacity(0.3))
+                                                                .frame(width: 40, height: 40)
+                                                        }
+                                                    }
+                                                    
+                                                    VStack(alignment: .leading) {
+                                                        Text(group.name)
+                                                            .font(.custom("Fredoka-Regular", size: 18))
+                                                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                                                        
+                                                        Text("Check out what's happening!")
+                                                            .font(.custom("Markazi Text", size: 16))
+                                                            .foregroundColor(.gray)
+                                                    }
+                                                    
+                                                    Spacer()
+                                                    
+                                                    VStack(alignment: .trailing) {
+                                                        Text("10:28 PM")
+                                                            .font(.footnote)
+                                                            .foregroundColor(.gray)
+                                                        
+                                                        Image(systemName: "chevron.right")
+                                                            .foregroundColor(.gray.opacity(0.6))
+                                                    }
+                                                }
+                                                .padding(.horizontal)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
+                                                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                                                )
                                             }
+                                            .buttonStyle(PlainButtonStyle())
                                         }
                                         .offset(x: swipedGroupId == group.id ? -80 : 0)
                                         .gesture(
@@ -409,6 +426,21 @@ struct GroupListView: View {
                 isSearchFocused = false
             }
             .ignoresSafeArea(.keyboard)
+            .onAppear {
+                handleInitialSetup()
+                
+                // Setup keyboard notifications
+                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in
+                    withAnimation {
+                        keyboardVisible = true
+                    }
+                }
+                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
+                    withAnimation {
+                        keyboardVisible = false
+                    }
+                }
+            }
         } else {
             // Fallback on earlier versions
         }

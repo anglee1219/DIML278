@@ -25,7 +25,7 @@ struct BioEntryView: View {
         
         // Get stored credentials and user data
         guard let email = UserDefaults.standard.string(forKey: "pending_email"),
-              let password = UserDefaults.standard.string(forKey: "pending_password") else {
+              let _ = UserDefaults.standard.string(forKey: "pending_password") else {
             alertMessage = "Missing credentials. Please try creating your account again."
             showAlert = true
             isLoading = false
@@ -37,13 +37,17 @@ struct BioEntryView: View {
         let username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
         let name = UserDefaults.standard.string(forKey: "profile_name") ?? username
         
+        // Update ProfileViewModel with the username
+        viewModel.username = username
+        viewModel.name = name
+        
         // Save current profile data to UserDefaults
         UserDefaults.standard.set(viewModel.location, forKey: "profile_location")
         UserDefaults.standard.set(viewModel.school, forKey: "profile_school")
         UserDefaults.standard.set(viewModel.interests, forKey: "profile_interests")
         
         // Create profile data dictionary
-        let profileData: [String: Any] = [
+        var profileData: [String: Any] = [
             "uid": currentUser.uid,
             "email": email,
             "username": username,
@@ -52,19 +56,26 @@ struct BioEntryView: View {
             "school": viewModel.school,
             "interests": viewModel.interests,
             "zodiacSign": zodiacSign,
+            "birthday": UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date(),
             "createdAt": FieldValue.serverTimestamp(),
             "lastUpdated": FieldValue.serverTimestamp(),
             "profileCompleted": true
         ]
         
+        // Add profile image URL if it exists
+        if let imageURL = UserDefaults.standard.string(forKey: "profile_image_url_\(currentUser.uid)") {
+            profileData["profileImageURL"] = imageURL
+        }
+        
         // Save to Firestore using setData with merge
         let db = Firestore.firestore()
+        let strongSelf = self // Capture self strongly since we're in a value type
         db.collection("users").document(currentUser.uid).setData(profileData, merge: true) { error in
             if let error = error {
                 DispatchQueue.main.async {
-                    self.alertMessage = error.localizedDescription
-                    self.showAlert = true
-                    self.isLoading = false
+                    strongSelf.alertMessage = error.localizedDescription
+                    strongSelf.showAlert = true
+                    strongSelf.isLoading = false
                 }
                 return
             }
@@ -72,24 +83,34 @@ struct BioEntryView: View {
             print("Successfully saved profile data to Firestore")
             
             // Complete the sign up process
-            self.authManager.completeSignUp { result in
+            strongSelf.authManager.completeSignUp { result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
                         print("Successfully completed sign up")
                         // First set loading to false
-                        self.isLoading = false
+                        strongSelf.isLoading = false
                         // Then update auth state
                         withAnimation {
-                            self.authManager.isCompletingProfile = false
-                            self.authManager.isAuthenticated = true
+                            strongSelf.authManager.isCompletingProfile = false
+                            strongSelf.authManager.isAuthenticated = true
+                            
+                            // Switch to the main interface (MainTabView)
+                            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                               let window = windowScene.windows.first {
+                                window.rootViewController = UIHostingController(rootView: 
+                                    NavigationView {
+                                        MainTabView(currentTab: .home)
+                                    }
+                                )
+                            }
                         }
                         
                     case .failure(let error):
                         print("Failed to complete sign up: \(error.localizedDescription)")
-                        self.alertMessage = error.localizedDescription
-                        self.showAlert = true
-                        self.isLoading = false
+                        strongSelf.alertMessage = error.localizedDescription
+                        strongSelf.showAlert = true
+                        strongSelf.isLoading = false
                     }
                 }
             }

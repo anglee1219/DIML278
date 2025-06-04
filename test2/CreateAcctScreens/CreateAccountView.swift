@@ -159,12 +159,16 @@ struct CreateAccountView: View {
                                 // Create Firebase account immediately
                                 authManager.createAccount(email: account.email, password: account.password) { result in
                                     switch result {
-                                    case .success(let user):
+                                    case .success(_):
                                         // Store additional info in UserDefaults
                                         UserDefaults.standard.set(account.username, forKey: "profile_username")
                                         UserDefaults.standard.set(account.username, forKey: "profile_name")
                                         UserDefaults.standard.set(account.email, forKey: "pending_email")
                                         UserDefaults.standard.set(account.password, forKey: "pending_password")
+                                        
+                                        // Update ProfileViewModel
+                                        ProfileViewModel.shared.username = account.username
+                                        ProfileViewModel.shared.name = account.username
                                 
                                         // Navigate to next screen
                                         DispatchQueue.main.async {

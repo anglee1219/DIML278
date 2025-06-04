@@ -32,6 +32,14 @@ class ProfileViewModel: ObservableObject {
         }
     }
     
+    @Published var birthday: Date = Date() {
+        didSet {
+            saveProfile()
+            // Also save to UserDefaults for immediate access
+            UserDefaults.standard.set(birthday, forKey: "profile_birthday")
+        }
+    }
+    
     @Published var location: String = "" {
         didSet {
             saveProfile()
@@ -88,7 +96,7 @@ class ProfileViewModel: ObservableObject {
         loadUserProfile()
         
         // Set up Auth state listener
-        Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
+        _ = Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
             if user != nil {
                 self?.loadUserProfile()
             } else {
@@ -103,6 +111,7 @@ class ProfileViewModel: ObservableObject {
         self.username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
         self.pronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
         self.zodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+        self.birthday = UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date()
         self.location = UserDefaults.standard.string(forKey: "profile_location") ?? ""
         self.school = UserDefaults.standard.string(forKey: "profile_school") ?? ""
         self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
@@ -110,7 +119,7 @@ class ProfileViewModel: ObservableObject {
         self.showLocation = true
         self.showSchool = true
         
-        if let imageData = UserDefaults.standard.data(forKey: "profile_image") {
+        if let imageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(Auth.auth().currentUser?.uid ?? "")") {
             self.profileImageData = imageData
         }
     }
@@ -146,6 +155,9 @@ class ProfileViewModel: ObservableObject {
                 UserDefaults.standard.set(data["username"] as? String ?? "", forKey: "profile_username")
                 UserDefaults.standard.set(data["pronouns"] as? String ?? "", forKey: "profile_pronouns")
                 UserDefaults.standard.set(data["zodiacSign"] as? String ?? "", forKey: "profile_zodiac")
+                if let timestamp = data["birthday"] as? Timestamp {
+                    UserDefaults.standard.set(timestamp.dateValue(), forKey: "profile_birthday")
+                }
                 UserDefaults.standard.set(data["location"] as? String ?? "", forKey: "profile_location")
                 UserDefaults.standard.set(data["school"] as? String ?? "", forKey: "profile_school")
                 UserDefaults.standard.set(data["interests"] as? String ?? "", forKey: "profile_interests")
@@ -155,6 +167,9 @@ class ProfileViewModel: ObservableObject {
                 self?.username = data["username"] as? String ?? ""
                 self?.pronouns = data["pronouns"] as? String ?? ""
                 self?.zodiac = data["zodiacSign"] as? String ?? ""
+                if let timestamp = data["birthday"] as? Timestamp {
+                    self?.birthday = timestamp.dateValue()
+                }
                 self?.location = data["location"] as? String ?? ""
                 self?.school = data["school"] as? String ?? ""
                 self?.interests = data["interests"] as? String ?? ""
@@ -165,16 +180,19 @@ class ProfileViewModel: ObservableObject {
                 // Load profile image from Firebase Storage
                 if let imageURL = data["profileImageURL"] as? String,
                    let url = URL(string: imageURL) {
-                    URLSession.shared.dataTask(with: url) { data, response, error in
+                    URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
                         if let error = error {
                             print("Error downloading profile image: \(error.localizedDescription)")
                             return
                         }
-                        if let data = data {
-                            DispatchQueue.main.async {
-                                self?.profileImageData = data
-                                // Cache the image data
-                                UserDefaults.standard.set(data, forKey: "profile_image")
+                        guard let data = data,
+                              let self = self else { return }
+                        
+                        DispatchQueue.main.async {
+                            self.profileImageData = data
+                            // Cache the image data
+                            if let userId = Auth.auth().currentUser?.uid {
+                                UserDefaults.standard.set(data, forKey: "cached_profile_image_\(userId)")
                             }
                         }
                     }.resume()
@@ -189,6 +207,7 @@ class ProfileViewModel: ObservableObject {
         self.username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
         self.pronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
         self.zodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+        self.birthday = UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date()
         self.location = UserDefaults.standard.string(forKey: "profile_location") ?? ""
         self.school = UserDefaults.standard.string(forKey: "profile_school") ?? ""
         self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
@@ -206,6 +225,7 @@ class ProfileViewModel: ObservableObject {
         username = ""
         pronouns = ""
         zodiac = ""
+        birthday = Date()
         location = ""
         school = ""
         interests = ""
@@ -231,6 +251,7 @@ class ProfileViewModel: ObservableObject {
             "username": username,
             "pronouns": pronouns,
             "zodiacSign": zodiac,
+            "birthday": Timestamp(date: birthday),
             "location": location,
             "school": school,
             "interests": interests,
@@ -261,13 +282,22 @@ class ProfileViewModel: ObservableObject {
         
         let storage = Storage.storage()
         let storageRef = storage.reference()
-        let profileImageRef = storageRef.child("profile_images/\(userId).jpg")
+        
+        // Create the profile_images directory if it doesn't exist
+        let profileImagesRef = storageRef.child("profile_images")
+        let profileImageRef = profileImagesRef.child("\(userId).jpg")
         
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
         
-        // Show loading state if needed
-        profileImageRef.putData(imageData, metadata: metadata) { [weak self] metadata, error in
+        // Compress image data for better upload performance
+        guard let compressedImageData = UIImage(data: imageData)?.jpegData(compressionQuality: 0.5) else {
+            print("Error compressing image data")
+            return
+        }
+        
+        // Upload the new image
+        profileImageRef.putData(compressedImageData, metadata: metadata) { metadata, error in
             if let error = error {
                 print("Error uploading profile image: \(error.localizedDescription)")
                 return
@@ -282,14 +312,19 @@ class ProfileViewModel: ObservableObject {
                 
                 if let downloadURL = url {
                     let db = Firestore.firestore()
-                    db.collection("users").document(userId).setData([
+                    let profileData: [String: Any] = [
                         "profileImageURL": downloadURL.absoluteString,
                         "lastUpdated": FieldValue.serverTimestamp()
-                    ], merge: true) { error in
+                    ]
+                    
+                    db.collection("users").document(userId).setData(profileData, merge: true) { error in
                         if let error = error {
                             print("Error saving profile image URL: \(error.localizedDescription)")
                         } else {
                             print("Profile image URL saved successfully")
+                            // Cache the compressed image data with user-specific key
+                            UserDefaults.standard.set(compressedImageData, forKey: "cached_profile_image_\(userId)")
+                            UserDefaults.standard.set(downloadURL.absoluteString, forKey: "profile_image_url_\(userId)")
                         }
                     }
                 }

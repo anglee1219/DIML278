@@ -1,7 +1,9 @@
 import SwiftUI
 import AVFoundation
+import FirebaseAuth
 
 struct ProfilePicSetup: View {
+    @StateObject private var viewModel = ProfileViewModel.shared
     @Environment(\.dismiss) var dismiss
     @State private var image: UIImage?
     @State private var showImagePicker = false
@@ -69,8 +71,8 @@ struct ProfilePicSetup: View {
                     // Next Arrow
                     Button(action: {
                         // Save profile image to UserDefaults if selected
-                        if let imageData = image?.jpegData(compressionQuality: 0.8) {
-                            UserDefaults.standard.set(imageData, forKey: "profile_image")
+                        if let image = image {
+                            viewModel.updateProfileImage(image)
                         }
                         navigateToNext = true
                     }) {

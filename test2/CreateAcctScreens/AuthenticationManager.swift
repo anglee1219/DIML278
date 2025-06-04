@@ -10,7 +10,7 @@ class AuthenticationManager: ObservableObject {
     
     private init() {
         // Set up Firebase Auth state listener
-        Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
+        _ = Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
             // Only set isAuthenticated to true if we're not in profile completion mode
             if let self = self {
                 self.currentUser = user
@@ -46,24 +46,37 @@ class AuthenticationManager: ObservableObject {
                     let userData: [String: Any] = [
                         "uid": user.uid,
                         "email": email,
+                        "username": UserDefaults.standard.string(forKey: "profile_username") ?? "",
+                        "name": UserDefaults.standard.string(forKey: "profile_name") ?? "",
+                        "pronouns": UserDefaults.standard.string(forKey: "profile_pronouns") ?? "",
+                        "zodiacSign": UserDefaults.standard.string(forKey: "profile_zodiac") ?? "",
+                        "location": UserDefaults.standard.string(forKey: "profile_location") ?? "",
+                        "school": UserDefaults.standard.string(forKey: "profile_school") ?? "",
+                        "interests": UserDefaults.standard.string(forKey: "profile_interests") ?? "",
+                        "birthday": UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date(),
+                        "profileImageURL": UserDefaults.standard.string(forKey: "profile_image_url_\(user.uid)") ?? "",
+                        "showLocation": true,
+                        "showSchool": true,
                         "createdAt": FieldValue.serverTimestamp(),
                         "lastUpdated": FieldValue.serverTimestamp(),
                         "profileCompleted": false
                     ]
                     
-                    db.collection("users").document(user.uid).setData(userData) { error in
+                    db.collection("users").document(user.uid).setData(userData, merge: true) { error in
                         if let error = error {
                             print("Error creating user document: \(error.localizedDescription)")
                             self?.isCompletingProfile = false
+                            completion(.failure(error))
                         } else {
                             print("Successfully created user document")
+                            self?.currentUser = user
+                            
+                            // Store credentials for later use
+                            UserDefaults.standard.set(email, forKey: "pending_email")
+                            UserDefaults.standard.set(password, forKey: "pending_password")
+                            
+                            completion(.success(user))
                         }
-                        
-                        self?.currentUser = user
-                        // Store credentials for later if needed
-                        UserDefaults.standard.set(email, forKey: "pending_email")
-                        UserDefaults.standard.set(password, forKey: "pending_password")
-                        completion(.success(user))
                     }
                 }
             }
@@ -81,6 +94,7 @@ class AuthenticationManager: ObservableObject {
         Auth.auth().signIn(withEmail: email, password: password) { [weak self] authResult, error in
             DispatchQueue.main.async {
                 if let error = error {
+                    self?.isCompletingProfile = false
                     completion(.failure(error))
                     return
                 }
@@ -88,28 +102,51 @@ class AuthenticationManager: ObservableObject {
                 // Update Firestore to mark profile as completed
                 if let userId = authResult?.user.uid {
                     let db = Firestore.firestore()
-                    db.collection("users").document(userId).updateData([
+                    
+                    // Get all profile data from UserDefaults
+                    let profileData: [String: Any] = [
+                        "uid": userId,
+                        "email": email,
+                        "username": UserDefaults.standard.string(forKey: "profile_username") ?? "",
+                        "name": UserDefaults.standard.string(forKey: "profile_name") ?? "",
+                        "pronouns": UserDefaults.standard.string(forKey: "profile_pronouns") ?? "",
+                        "zodiacSign": UserDefaults.standard.string(forKey: "profile_zodiac") ?? "",
+                        "location": UserDefaults.standard.string(forKey: "profile_location") ?? "",
+                        "school": UserDefaults.standard.string(forKey: "profile_school") ?? "",
+                        "interests": UserDefaults.standard.string(forKey: "profile_interests") ?? "",
+                        "birthday": UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date(),
+                        "profileImageURL": UserDefaults.standard.string(forKey: "profile_image_url_\(userId)") ?? "",
+                        "showLocation": true,
+                        "showSchool": true,
                         "profileCompleted": true,
                         "lastUpdated": FieldValue.serverTimestamp()
-                    ]) { error in
-                        if let error = error {
-                            print("Error updating profile completion status: \(error.localizedDescription)")
-                            completion(.failure(error))
-                            return
+                    ]
+                    
+                    db.collection("users").document(userId).setData(profileData, merge: true) { error in
+                        DispatchQueue.main.async {
+                            if let error = error {
+                                print("Error updating profile completion status: \(error.localizedDescription)")
+                                self?.isCompletingProfile = false
+                                completion(.failure(error))
+                                return
+                            }
+                            
+                            // Set authentication state after successful profile completion
+                            self?.isCompletingProfile = false
+                            self?.isAuthenticated = true
+                            self?.currentUser = authResult?.user
+                            
+                            // Clean up only the temporary credentials
+                            UserDefaults.standard.removeObject(forKey: "pending_email")
+                            UserDefaults.standard.removeObject(forKey: "pending_password")
+                            
+                            // Keep all profile data in UserDefaults for future use
+                            print("Successfully completed sign up")
+                            completion(.success(()))
                         }
-                        
-                        // Set authentication state after successful profile completion
-                        self?.isCompletingProfile = false
-                        self?.isAuthenticated = true
-                        self?.currentUser = authResult?.user
-                        
-                        // Clean up stored credentials only after successful profile update
-                        UserDefaults.standard.removeObject(forKey: "pending_email")
-                        UserDefaults.standard.removeObject(forKey: "pending_password")
-                        
-                        completion(.success(()))
                     }
                 } else {
+                    self?.isCompletingProfile = false
                     completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User ID not found"])))
                 }
             }
@@ -132,22 +169,51 @@ class AuthenticationManager: ObservableObject {
     }
     
     func signOut() {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        
         do {
+            // Clear Firestore profile completion status
+            let db = Firestore.firestore()
+            db.collection("users").document(userId).updateData([
+                "profileCompleted": false,
+                "lastUpdated": FieldValue.serverTimestamp()
+            ]) { error in
+                if let error = error {
+                    print("Error updating profile completion status: \(error.localizedDescription)")
+                }
+            }
+            
             try Auth.auth().signOut()
             self.isAuthenticated = false
+            self.isCompletingProfile = false
             self.currentUser = nil
             
-            // Clear all user data
-            UserDefaults.standard.removeObject(forKey: "profile_name")
-            UserDefaults.standard.removeObject(forKey: "profile_username")
-            UserDefaults.standard.removeObject(forKey: "profile_pronouns")
-            UserDefaults.standard.removeObject(forKey: "profile_zodiac")
-            UserDefaults.standard.removeObject(forKey: "profile_location")
-            UserDefaults.standard.removeObject(forKey: "profile_school")
-            UserDefaults.standard.removeObject(forKey: "profile_interests")
-            UserDefaults.standard.removeObject(forKey: "profile_image")
-            UserDefaults.standard.removeObject(forKey: "privacy_show_location")
-            UserDefaults.standard.removeObject(forKey: "privacy_show_school")
+            // Clear all user data from UserDefaults
+            let userDefaultsKeys = [
+                "profile_name",
+                "profile_username",
+                "profile_pronouns",
+                "profile_zodiac",
+                "profile_location",
+                "profile_school",
+                "profile_interests",
+                "profile_image",
+                "profile_image_url",
+                "profile_birthday",
+                "privacy_show_location",
+                "privacy_show_school",
+                "pending_email",
+                "pending_password",
+                "cached_profile_image_\(userId)"
+            ]
+            
+            userDefaultsKeys.forEach { key in
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            
+            // Synchronize UserDefaults to ensure changes are saved
+            UserDefaults.standard.synchronize()
+            
         } catch {
             print("Error signing out: \(error.localizedDescription)")
         }

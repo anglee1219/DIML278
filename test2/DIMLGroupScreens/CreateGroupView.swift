@@ -133,24 +133,30 @@ struct CreateGroupView: View {
                     
                     Button("Create") {
                         let currentUser = User(
-                            id: UUID().uuidString,
-                            name: "You",
-                            username: "@me",
-                            role: .admin
+                            id: Auth.auth().currentUser?.uid ?? UUID().uuidString,
+                            name: SharedProfileViewModel.shared.name,
+                            username: "@\(SharedProfileViewModel.shared.name.lowercased().replacingOccurrences(of: " ", with: ""))",
+                            role: .member  // Start everyone as a member
                         )
                         
+                        // Create array with all members including current user
                         var groupMembers = newMembers.map { member in
-                            var updatedMember = member
+                            let updatedMember = member
                             updatedMember.role = .member
                             return updatedMember
                         }
                         groupMembers.append(currentUser)
                         
-                        // Now randomly select influencer from ALL members including admin
-                        let influencerId = groupMembers.randomElement()!.id
+                        // Randomly select an influencer from ALL members
+                        let randomIndex = Int.random(in: 0..<groupMembers.count)
+                        let influencerId = groupMembers[randomIndex].id
+                        
                         // Update the selected member to be the influencer
-                        if let index = groupMembers.firstIndex(where: { $0.id == influencerId }) {
-                            groupMembers[index].role = .influencer
+                        groupMembers[randomIndex].role = .influencer
+                        
+                        // Make the current user an admin
+                        if let adminIndex = groupMembers.firstIndex(where: { $0.id == currentUser.id }) {
+                            groupMembers[adminIndex].role = .admin
                         }
                         
                         let newGroup = Group(

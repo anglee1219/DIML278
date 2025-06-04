@@ -13,20 +13,36 @@ class FriendsManager: ObservableObject {
     
     private let db = Firestore.firestore()
     private var listenersRegistered = false
+    private var friendsListener: ListenerRegistration?
     
     private init() {
         setupListeners()
     }
     
+    deinit {
+        friendsListener?.remove()
+    }
+    
     func setupListeners() {
         guard let currentUserId = Auth.auth().currentUser?.uid, !listenersRegistered else { return }
         
-        // Listen for friends
-        db.collection("users").document(currentUserId).collection("friends")
+        // Remove existing listener if any
+        friendsListener?.remove()
+        
+        // Listen for friends list changes
+        friendsListener = db.collection("users").document(currentUserId)
             .addSnapshotListener { [weak self] snapshot, error in
-                guard let self = self, let snapshot = snapshot else { return }
+                guard let self = self,
+                      let document = snapshot,
+                      let data = document.data() else {
+                    print("Error fetching friends: \(error?.localizedDescription ?? "Unknown error")")
+                    return
+                }
                 
-                let friendIds = snapshot.documents.map { $0.documentID }
+                // Get friends array from user document
+                let friendIds = data["friends"] as? [String] ?? []
+                
+                // Fetch details for each friend
                 self.fetchUserDetails(for: friendIds) { users in
                     DispatchQueue.main.async {
                         self.friends = users
@@ -38,7 +54,11 @@ class FriendsManager: ObservableObject {
         db.collection("users")
             .limit(to: 20)
             .getDocuments { [weak self] snapshot, error in
-                guard let self = self, let snapshot = snapshot else { return }
+                guard let self = self,
+                      let snapshot = snapshot else {
+                    print("Error fetching suggested users: \(error?.localizedDescription ?? "Unknown error")")
+                    return
+                }
                 
                 let currentFriendIds = Set(self.friends.map { $0.id })
                 let users = snapshot.documents.compactMap { document -> User? in
@@ -77,7 +97,8 @@ class FriendsManager: ObservableObject {
             group.enter()
             db.collection("users").document(userId).getDocument { document, error in
                 defer { group.leave() }
-                if let document = document, let data = document.data() {
+                if let document = document,
+                   let data = document.data() {
                     let user = User(
                         id: userId,
                         name: data["name"] as? String ?? data["username"] as? String ?? "",
@@ -90,7 +111,7 @@ class FriendsManager: ObservableObject {
         }
         
         group.notify(queue: .main) {
-            completion(users)
+            completion(users.sorted { $0.name < $1.name })
         }
     }
     

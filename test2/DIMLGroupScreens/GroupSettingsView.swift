@@ -20,6 +20,7 @@ struct Friend: Identifiable, Hashable {
 struct GroupSettingsView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var groupStore: GroupStore
+    @StateObject private var friendsManager = FriendsManager.shared
     var group: Group
     
     @State private var selectedFrequency = "Every 5 hours"
@@ -28,20 +29,24 @@ struct GroupSettingsView: View {
     @State private var showRemoveAlert = false
     @State private var memberToRemove: User?
     @State private var showAddConfirmation = false
-    @State private var selectedFriends: Set<UUID> = []
-    @State private var friends: [Friend] = [
-        Friend(name: "Steph Mulkens", username: "@steph"),
-        Friend(name: "Nick Lowe", username: "@nick"),
-        Friend(name: "Nicole Reinhardt", username: "@nicole"),
-        Friend(name: "Tanya Benson", username: "@tanya"),
-        Friend(name: "Alex Kim", username: "@alex"),
-        Friend(name: "Sarah Chen", username: "@sarah")
-    ]
-    
+    @State private var selectedFriends: Set<String> = []
     @State private var showFriendProfile = false
-    @State private var selectedFriend: Friend?
+    @State private var selectedFriend: User?
     
     let frequencies = ["Every 1 hour", "Every 3 hours", "Every 5 hours", "Every 8 hours"]
+    
+    var filteredFriends: [User] {
+        if searchText.isEmpty {
+            return friendsManager.friends.filter { friend in
+                !group.members.contains { $0.id == friend.id }
+            }
+        }
+        return friendsManager.friends.filter { friend in
+            !group.members.contains { $0.id == friend.id } &&
+            (friend.name.lowercased().contains(searchText.lowercased()) ||
+             (friend.username ?? "").lowercased().contains(searchText.lowercased()))
+        }
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -134,7 +139,8 @@ struct GroupSettingsView: View {
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(member.name)
-                                        .font(.custom("Markazi Text", size: 16))
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.black)
                                     Text(member.username ?? "@user")
                                         .font(.custom("Markazi Text", size: 14))
                                         .foregroundColor(.gray)
@@ -236,11 +242,12 @@ struct GroupSettingsView: View {
             Button("Add") {
                 // Convert selected friends to Users and add them to the group
                 let newMembers: [User] = selectedFriends.compactMap { friendId in
-                    if let friend = friends.first(where: { $0.id == friendId }) {
+                    if let friend = friendsManager.friends.first(where: { $0.id == friendId }) {
+                        let username = friend.username ?? "@\(friend.name.lowercased().replacingOccurrences(of: " ", with: ""))"
                         return User(
                             id: UUID().uuidString,
                             name: friend.name,
-                            username: friend.username,
+                            username: username,
                             role: .member
                         )
                     }
@@ -276,29 +283,23 @@ struct GroupSettingsView: View {
         }
         .sheet(isPresented: $showFriendProfile) {
             if let friend = selectedFriend {
+                let username = friend.username ?? "@\(friend.name.lowercased().replacingOccurrences(of: " ", with: ""))"
                 FriendProfileView(user: SuggestedUser(
                     name: friend.name,
-                    username: friend.username ?? "@unknown",
+                    username: username,
                     mutualFriends: 0,
                     source: "Friends"
                 ))
             }
         }
-    }
-    
-    var filteredFriends: [Friend] {
-        if searchText.isEmpty {
-            return friends
-        }
-        return friends.filter { friend in
-            friend.name.lowercased().contains(searchText.lowercased()) ||
-            friend.username.lowercased().contains(searchText.lowercased())
+        .onAppear {
+            friendsManager.setupListeners()
         }
     }
 }
 
 struct FriendCell: View {
-    let friend: Friend
+    let friend: User
     let isSelected: Bool
     let onTap: () -> Void
     
@@ -327,9 +328,11 @@ struct FriendCell: View {
                     Text(friend.name)
                         .font(.custom("Markazi Text", size: 16))
                         .foregroundColor(.black)
-                    Text(friend.username)
-                        .font(.custom("Markazi Text", size: 14))
-                        .foregroundColor(.gray)
+                    if let username = friend.username {
+                        Text(username)
+                            .font(.custom("Markazi Text", size: 14))
+                            .foregroundColor(.gray)
+                    }
                 }
             }
         }

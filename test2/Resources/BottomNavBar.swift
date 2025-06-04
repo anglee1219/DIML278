@@ -9,8 +9,10 @@ enum Tab {
 struct BottomNavBar: View {
     @Binding var currentTab: Tab
     var onCameraTap: () -> Void
-    var isVisible: Bool = true  // Add default parameter for backward compatibility
-
+    var isVisible: Bool = true
+    var isInfluencer: Bool = false
+    @State private var bounceOffset: CGFloat = 0
+    
     var body: some View {
         if isVisible {
             HStack {
@@ -30,13 +32,31 @@ struct BottomNavBar: View {
                 Button(action: {
                     onCameraTap()
                 }) {
-                    Circle()
-                        .stroke(Color.gray, lineWidth: 2)
-                        .frame(width: 50, height: 50)
-                        .overlay(
-                            Image(systemName: "camera")
-                                .foregroundColor(.gray)
-                        )
+                    ZStack {
+                        Circle()
+                            .stroke(isInfluencer ? Color.yellow : Color.gray, lineWidth: 2)
+                            .frame(width: 50, height: 50)
+                        
+                        Image(systemName: "camera")
+                            .foregroundColor(isInfluencer ? .yellow : .gray)
+                    }
+                    .offset(y: bounceOffset)
+                    .animation(
+                        isInfluencer ?
+                            Animation
+                                .easeInOut(duration: 0.8)
+                                .repeatForever(autoreverses: true) :
+                            .default,
+                        value: bounceOffset
+                    )
+                }
+                .onAppear {
+                    if isInfluencer {
+                        bounceOffset = -10
+                    }
+                }
+                .onChange(of: isInfluencer) { newValue in
+                    bounceOffset = newValue ? -10 : 0
                 }
 
                 Spacer()
@@ -55,7 +75,7 @@ struct BottomNavBar: View {
             .padding(.vertical, 16)
             .padding(.bottom, 20)
             .background(Color(red: 1, green: 0.989, blue: 0.93))
-            .transition(.move(edge: .bottom))  // Add smooth transition when showing/hiding
+            .transition(.move(edge: .bottom))
         }
     }
 }

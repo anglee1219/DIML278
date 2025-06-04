@@ -1,5 +1,4 @@
 import SwiftUI
-@testable import test2
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth

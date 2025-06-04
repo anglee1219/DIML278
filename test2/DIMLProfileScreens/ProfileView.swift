@@ -47,9 +47,9 @@ struct ProfileView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                TopNavBar(showsMenu: true) {
+                TopNavBar(showsMenu: true, onMenu: {
                     showSettings = true
-                }
+                })
                 
                 ScrollView {
                     VStack(spacing: 24) {
@@ -416,7 +416,7 @@ struct ProfileView: View {
                         Text("pronouns:")
                             .font(.system(size: 16))
                             .foregroundColor(.black)
-                        Menu {
+                        Menu(content: {
                             ForEach(pronounOptions, id: \.self) { option in
                                 Button(action: {
                                     viewModel.pronouns = option
@@ -425,7 +425,7 @@ struct ProfileView: View {
                                         .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
                                 }
                             }
-                        } label: {
+                        }, label: {
                             HStack {
                                 Text(viewModel.pronouns)
                                     .font(.system(size: 16))
@@ -434,7 +434,7 @@ struct ProfileView: View {
                                 Image(systemName: "chevron.down")
                                     .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
                             }
-                        }
+                        })
                         .padding(.bottom, 4)
                         .overlay(
                             Rectangle()
@@ -667,7 +667,7 @@ struct EditProfileSheet: View {
                         Text("pronouns:")
                             .font(.system(size: 16))
                             .foregroundColor(.black)
-                        Menu {
+                        Menu(content: {
                             ForEach(pronounOptions, id: \.self) { option in
                                 Button(action: {
                                     viewModel.pronouns = option
@@ -676,7 +676,7 @@ struct EditProfileSheet: View {
                                         .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
                                 }
                             }
-                        } label: {
+                        }, label: {
                             HStack {
                                 Text(viewModel.pronouns)
                                     .font(.system(size: 16))
@@ -685,7 +685,7 @@ struct EditProfileSheet: View {
                                 Image(systemName: "chevron.down")
                                     .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
                             }
-                        }
+                        })
                         .padding(.bottom, 4)
                         .overlay(
                             Rectangle()

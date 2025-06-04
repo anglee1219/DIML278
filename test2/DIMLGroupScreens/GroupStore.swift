@@ -26,7 +26,7 @@ class GroupStore: ObservableObject {
     }
     
     func addGroup(_ group: Group) {
-        groups.append(group)
+        groups.insert(group, at: 0)
         saveGroups()
     }
     
