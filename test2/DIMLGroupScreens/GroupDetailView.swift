@@ -438,44 +438,44 @@ struct GroupDetailView: View {
     // MARK: - View Components
     
     private var topBarView: some View {
-        HStack {
-            Button(action: {
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let window = windowScene.windows.first {
-                    window.rootViewController = UIHostingController(rootView: GroupListView())
+                HStack {
+                    Button(action: {
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let window = windowScene.windows.first {
+                            window.rootViewController = UIHostingController(rootView: GroupListView())
+                        }
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.title3)
+                            .foregroundColor(.black)
+                    }
+
+                    Spacer()
+
+                    Image("DIML_Logo")
+                        .resizable()
+                        .frame(width: 40, height: 40)
+
+                    Spacer()
+
+                    Button(action: {
+                        showSettings = true
+                    }) {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundColor(.black)
+                    }
                 }
-            }) {
-                Image(systemName: "chevron.left")
-                    .font(.title3)
-                    .foregroundColor(.black)
-            }
-
-            Spacer()
-
-            Image("DIML_Logo")
-                .resizable()
-                .frame(width: 40, height: 40)
-
-            Spacer()
-
-            Button(action: {
-                showSettings = true
-            }) {
-                Image(systemName: "slider.horizontal.3")
-                    .foregroundColor(.black)
-            }
-        }
-        .padding(.horizontal)
-        .padding(.top, 12)
+                .padding(.horizontal)
+                .padding(.top, 12)
     }
-    
+
     private var mainContentView: some View {
-        ScrollView {
+                ScrollView {
             ScrollViewReader { proxy in
-                VStack(spacing: 16) {
-                    if isInfluencer {
+                    VStack(spacing: 16) {
+                        if isInfluencer {
                         influencerContentView
-                    } else {
+                                    } else {
                         nonInfluencerContentView
                     }
                     previousEntriesView
@@ -490,46 +490,46 @@ struct GroupDetailView: View {
                     }
                 }
             }
-        }
-        .simultaneousGesture(
-            TapGesture()
-                .onEnded { _ in
-                    hideKeyboard()
                 }
-        )
-    }
-    
+                .simultaneousGesture(
+                    TapGesture()
+                        .onEnded { _ in
+                            hideKeyboard()
+                        }
+                )
+            }
+            
     private var bottomNavigationView: some View {
-        VStack {
-            Spacer()
-            BottomNavBar(
-                currentTab: Binding(
-                    get: { currentTab },
-                    set: { newTab in
-                        if newTab == .camera {
+            VStack {
+                Spacer()
+                BottomNavBar(
+                    currentTab: Binding(
+                        get: { currentTab },
+                        set: { newTab in
+                            if newTab == .camera {
                             checkCameraPermission()
-                        } else if newTab == .home {
+                            } else if newTab == .home {
                             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                                let window = windowScene.windows.first {
-                                window.rootViewController = UIHostingController(rootView: GroupListView())
-                            }
-                        } else if newTab == .profile {
+                                    window.rootViewController = UIHostingController(rootView: GroupListView())
+                                    }
+                            } else if newTab == .profile {
                             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                                let window = windowScene.windows.first {
                                 window.rootViewController = UIHostingController(rootView: ProfileView())
                             }
+                            }
+                            currentTab = newTab
                         }
-                        currentTab = newTab
-                    }
-                ),
-                onCameraTap: {
-                    print("Camera tap triggered")
-                    checkCameraPermission()
-                },
-                isInfluencer: isInfluencer
-            )
+                    ),
+                    onCameraTap: {
+                        print("Camera tap triggered")
+                        checkCameraPermission()
+                    },
+                    isInfluencer: isInfluencer
+                )
+            }
         }
-    }
 
     private func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
