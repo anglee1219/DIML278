@@ -34,7 +34,7 @@ extension TimeOfDay: Hashable {
 
 struct DIMLFeedView: View {
     let group: Group
-    @StateObject private var entryStore = EntryStore()
+    @StateObject private var entryStore: EntryStore
     @State private var showCamera = false
     @State private var showImagePicker = false
     @State private var showPermissionAlert = false
@@ -46,6 +46,14 @@ struct DIMLFeedView: View {
     @State private var isUploading = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var nextPromptCountdown = ""
+    @State private var countdownTimer: Timer?
+    
+    // Initialize with group ID for persistence
+    init(group: Group) {
+        self.group = group
+        self._entryStore = StateObject(wrappedValue: EntryStore(groupId: group.id))
+    }
     
     private let promptManager = PromptManager.shared
     private let storage = StorageManager.shared
@@ -65,8 +73,13 @@ struct DIMLFeedView: View {
         let year = calendar.component(.year, from: today)
         let dailySeed = year * 1000 + dayOfYear
         
-        // Use seeded random to get consistent prompt for the day
-        var generator = SeededRandomNumberGenerator(seed: UInt64(dailySeed + timeOfDay.hashValue))
+        // Include group ID in seed to ensure different prompts per group
+        // Use absolute values and proper UInt64 conversion to avoid negative value errors
+        let groupSeed = abs(group.id.hashValue)
+        let timeSeed = abs(timeOfDay.hashValue)
+        
+        // Use seeded random to get consistent prompt for the day + group combination
+        var generator = SeededRandomNumberGenerator(seed: UInt64(abs(dailySeed)) + UInt64(timeSeed) + UInt64(groupSeed))
         
         return promptManager.getSeededPrompt(for: timeOfDay, using: &generator) ?? "What does your day look like?"
     }
@@ -187,8 +200,9 @@ struct DIMLFeedView: View {
                     id: UUID().uuidString,
                     userId: Auth.auth().currentUser?.uid ?? "",
                     prompt: currentPrompt,
-                    imageURL: downloadURL,
                     response: responseText,
+                    image: nil, // Don't store local image since we have Firebase URL
+                    imageURL: downloadURL, // Use Firebase Storage URL
                     timestamp: Date(),
                     frameSize: capturedFrameSize
                 )
@@ -211,6 +225,93 @@ struct DIMLFeedView: View {
                 }
             }
         }
+    }
+    
+    private func calculateNextPromptTime() -> Date? {
+        let calendar = Calendar.current
+        let intervalHours = group.promptFrequency.intervalHours
+        
+        // Active day is 7 AM to 9 PM
+        let activeDayStart = 7
+        let activeDayEnd = 21
+        
+        // Find the current prompt entry to get its upload timestamp
+        guard let currentEntry = entryStore.entries.first(where: { $0.prompt == currentPrompt }) else {
+            // If no entry found for current prompt, they haven't uploaded yet
+            return nil
+        }
+        
+        // Calculate the next prompt time by adding the interval to the upload time
+        let uploadTime = currentEntry.timestamp
+        let nextPromptTime = calendar.date(byAdding: .hour, value: intervalHours, to: uploadTime) ?? uploadTime
+        let nextPromptHour = calendar.component(.hour, from: nextPromptTime)
+        
+        // If the next prompt time falls within the active window (7 AM - 9 PM)
+        if nextPromptHour >= activeDayStart && nextPromptHour <= activeDayEnd {
+            return nextPromptTime
+        }
+        
+        // If the next prompt would be outside the active window, schedule for tomorrow at 7 AM
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: uploadTime) ?? uploadTime
+        var dateComponents = calendar.dateComponents([.year, .month, .day], from: tomorrow)
+        dateComponents.hour = activeDayStart
+        dateComponents.minute = 0
+        dateComponents.second = 0
+        
+        return calendar.date(from: dateComponents)
+    }
+    
+    private func updateCountdown() {
+        // Check if user has completed the current prompt
+        let hasCompletedCurrentPrompt = entryStore.entries.contains { entry in
+            entry.prompt == currentPrompt
+        }
+        
+        guard isInfluencer else {
+            nextPromptCountdown = ""
+            return
+        }
+        
+        // If hasn't completed current prompt, don't show countdown number
+        guard hasCompletedCurrentPrompt else {
+            nextPromptCountdown = "Complete current prompt first"
+            return
+        }
+        
+        guard let nextPromptTime = calculateNextPromptTime() else {
+            nextPromptCountdown = ""
+            return
+        }
+        
+        let now = Date()
+        let timeInterval = nextPromptTime.timeIntervalSince(now)
+        
+        if timeInterval <= 0 {
+            nextPromptCountdown = "New prompt available!"
+            return
+        }
+        
+        let hours = Int(timeInterval) / 3600
+        let minutes = Int(timeInterval) % 3600 / 60
+        
+        if hours > 0 {
+            nextPromptCountdown = "\(hours)h \(minutes)m"
+        } else {
+            nextPromptCountdown = "\(minutes)m"
+        }
+    }
+    
+    private func startCountdownTimer() {
+        stopCountdownTimer()
+        updateCountdown()
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+            updateCountdown()
+        }
+    }
+    
+    private func stopCountdownTimer() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
     }
     
     var body: some View {
@@ -397,19 +498,36 @@ struct DIMLFeedView: View {
                                     }
                                 }
                                 
-                                // Yellow box with lock icon and timer (always visible)
-                                HStack {
-                                    Image(systemName: "lock.fill")
-                                        .foregroundColor(.gray)
-                                    Text("Next Prompt Unlocking in...")
-                                        .font(.body)
-                                        .foregroundColor(.gray)
-                                    Spacer()
+                                // Yellow box with lock icon and timer (always visible for influencers)
+                                if isInfluencer {
+                                    HStack {
+                                        Image(systemName: "lock.fill")
+                                            .foregroundColor(.gray)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Next Prompt Unlocking in...")
+                                                .font(.body)
+                                                .foregroundColor(.gray)
+                                            if nextPromptCountdown.isEmpty {
+                                                Text("Upload current prompt first")
+                                                    .font(.custom("Fredoka-Medium", size: 16))
+                                                    .foregroundColor(.gray)
+                                            } else if nextPromptCountdown == "Complete current prompt first" {
+                                                Text("Upload current prompt first")
+                                                    .font(.custom("Fredoka-Medium", size: 16))
+                                                    .foregroundColor(.gray)
+                                            } else {
+                                                Text(nextPromptCountdown)
+                                                    .font(.custom("Fredoka-Medium", size: 16))
+                                                    .foregroundColor(.black)
+                                            }
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding()
+                                    .background(Color(red: 1.0, green: 0.95, blue: 0.80))
+                                    .cornerRadius(16)
+                                    .padding(.horizontal)
                                 }
-                                .padding()
-                                .background(Color(red: 1.0, green: 0.95, blue: 0.80))
-                                .cornerRadius(16)
-                                .padding(.horizontal)
                             }
                         }
                         
@@ -513,6 +631,12 @@ struct DIMLFeedView: View {
             if currentPrompt.isEmpty {
                 loadDailyPrompt()
             }
+            // Start the countdown timer
+            startCountdownTimer()
+        }
+        .onDisappear {
+            // Stop the countdown timer
+            stopCountdownTimer()
         }
     }
 }
@@ -560,7 +684,9 @@ struct DIMLFeedView_Previews: PreviewProvider {
                 User(id: "2", name: "Sarah"),
                 User(id: "3", name: "Mike")
             ],
-            currentInfluencerId: "1"
+            currentInfluencerId: "1",
+            promptFrequency: .sixHours,
+            notificationsMuted: false
         ))
     }
 } 

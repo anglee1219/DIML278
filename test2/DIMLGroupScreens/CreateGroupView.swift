@@ -164,7 +164,9 @@ struct CreateGroupView: View {
                             name: groupName,
                             members: groupMembers,
                             currentInfluencerId: influencerId,
-                            date: Date()
+                            date: Date(),
+                            promptFrequency: .sixHours,
+                            notificationsMuted: false
                         )
                         onGroupCreated(newGroup)
                         dismiss()

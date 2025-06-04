@@ -23,8 +23,8 @@ struct GroupSettingsView: View {
     @StateObject private var friendsManager = FriendsManager.shared
     var group: Group
     
-    @State private var selectedFrequency = "Every 5 hours"
-    @State private var isMuted = true
+    @State private var selectedFrequency: PromptFrequency
+    @State private var isMuted: Bool
     @State private var searchText = ""
     @State private var showRemoveAlert = false
     @State private var memberToRemove: User?
@@ -32,8 +32,17 @@ struct GroupSettingsView: View {
     @State private var selectedFriends: Set<String> = []
     @State private var showFriendProfile = false
     @State private var selectedFriend: User?
+    @State private var isUpdatingSettings = false
     
-    let frequencies = ["Every 1 hour", "Every 3 hours", "Every 5 hours", "Every 8 hours"]
+    private let promptScheduler = PromptScheduler.shared
+    
+    init(groupStore: GroupStore, group: Group) {
+        self.groupStore = groupStore
+        self.group = group
+        // Initialize state with current group settings
+        self._selectedFrequency = State(initialValue: group.promptFrequency)
+        self._isMuted = State(initialValue: group.notificationsMuted)
+    }
     
     var filteredFriends: [User] {
         if searchText.isEmpty {
@@ -48,6 +57,32 @@ struct GroupSettingsView: View {
         }
     }
     
+    private func updateGroupSettings() {
+        isUpdatingSettings = true
+        
+        // Update the group with new settings
+        var updatedGroup = group
+        updatedGroup.promptFrequency = selectedFrequency
+        updatedGroup.notificationsMuted = isMuted
+        
+        // Save to GroupStore
+        groupStore.updateGroup(updatedGroup)
+        
+        // Update notification scheduling if current user is the influencer
+        if Auth.auth().currentUser?.uid == group.currentInfluencerId && !isMuted {
+            promptScheduler.schedulePrompts(
+                for: selectedFrequency,
+                influencerId: group.currentInfluencerId
+            ) {
+                DispatchQueue.main.async {
+                    isUpdatingSettings = false
+                }
+            }
+        } else {
+            isUpdatingSettings = false
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Header
@@ -69,6 +104,8 @@ struct GroupSettingsView: View {
                     if !selectedFriends.isEmpty {
                         showAddConfirmation = true
                     } else {
+                        // Save settings before dismissing
+                        updateGroupSettings()
                         dismiss()
                     }
                 }
@@ -84,34 +121,90 @@ struct GroupSettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Prompt Frequency:")
                             .font(.custom("Markazi Text", size: 18))
+                        
+                        Text("Currently sending \(selectedFrequency.numberOfPrompts) prompt\(selectedFrequency.numberOfPrompts == 1 ? "" : "s") during the influencer's day")
+                            .font(.custom("Markazi Text", size: 14))
+                            .foregroundColor(.gray)
+                            .padding(.bottom, 4)
 
                         Menu {
-                            ForEach(frequencies, id: \.self) { freq in
-                                Button(freq) {
-                                    selectedFrequency = freq
+                            ForEach(PromptFrequency.allCases, id: \.self) { frequency in
+                                Button(frequency.displayName) {
+                                    selectedFrequency = frequency
                                 }
                             }
                         } label: {
-                            Text(selectedFrequency)
-                                .padding(.horizontal)
-                                .padding(.vertical, 6)
-                                .background(Color(red: 1, green: 0.95, blue: 0.85))
-                                .cornerRadius(10)
+                            HStack {
+                                Text(selectedFrequency.displayName)
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color(red: 1, green: 0.95, blue: 0.85))
+                            .cornerRadius(10)
                         }
 
-                        Text("Mute Notifications")
+                        Text("Notifications")
                             .font(.custom("Markazi Text", size: 18))
                             .padding(.top, 16)
+                        
+                        Text(isMuted ? "Circle notifications are disabled" : "Circle notifications are enabled")
+                            .font(.custom("Markazi Text", size: 14))
+                            .foregroundColor(.gray)
+                            .padding(.bottom, 4)
 
                         Menu {
+                            Button("Enabled") { isMuted = false }
                             Button("Muted") { isMuted = true }
-                            Button("Unmuted") { isMuted = false }
                         } label: {
-                            Text(isMuted ? "Muted" : "Unmuted")
-                                .padding(.horizontal)
-                                .padding(.vertical, 6)
-                                .background(Color(red: 1, green: 0.95, blue: 0.85))
-                                .cornerRadius(10)
+                            HStack {
+                                Text(isMuted ? "Muted" : "Enabled")
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color(red: 1, green: 0.95, blue: 0.85))
+                            .cornerRadius(10)
+                        }
+                        
+                        if isUpdatingSettings {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Updating settings...")
+                                    .font(.custom("Markazi Text", size: 14))
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.top, 8)
+                        }
+                        
+                        // Info about settings
+                        if Auth.auth().currentUser?.uid == group.currentInfluencerId {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("ℹ️ You're the current influencer")
+                                    .font(.custom("Markazi Text", size: 14))
+                                    .foregroundColor(.blue)
+                                Text("Changes will affect how often you receive prompts during your influencer day")
+                                    .font(.custom("Markazi Text", size: 12))
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.top, 12)
+                        } else {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Current influencer: \(group.members.first(where: { $0.id == group.currentInfluencerId })?.name ?? "Unknown")")
+                                    .font(.custom("Markazi Text", size: 14))
+                                    .foregroundColor(.gray)
+                                Text("Only the daily influencer receives prompt notifications")
+                                    .font(.custom("Markazi Text", size: 12))
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.top, 12)
                         }
                     }
                     .padding(.horizontal)
@@ -341,14 +434,15 @@ struct FriendCell: View {
 
 struct GroupSettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        let mockGroup = Group(id: UUID().uuidString, name: "Sample Group")
+        let mockGroup = Group(id: UUID().uuidString, name: "Sample Group", promptFrequency: .sixHours, notificationsMuted: false)
         return GroupSettingsView(groupStore: GroupStore(), group: mockGroup)
     }
 }
 
 #Preview {
-    GroupSettingsView(groupStore: GroupStore(), group: Group(id: UUID().uuidString, name: "Sample Group"))
+    GroupSettingsView(groupStore: GroupStore(), group: Group(id: UUID().uuidString, name: "Sample Group", promptFrequency: .sixHours, notificationsMuted: false))
 }
+
 //
 //  GroupSettingsView.swift
 //  test2

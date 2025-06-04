@@ -31,7 +31,9 @@ struct GroupViewWithCompletion: View {
                         name: groupName,
                         members: sampleUsers,
                         currentInfluencerId: influencerId,
-                        date: Date()
+                        date: Date(),
+                        promptFrequency: PromptFrequency.sixHours,
+                        notificationsMuted: false
                     )
                     currentGroup = group
                     joined = true

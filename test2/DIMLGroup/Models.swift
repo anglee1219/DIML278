@@ -1,6 +1,11 @@
 import Foundation
 import UIKit
 import FirebaseFirestore
+import SwiftUI
+import AVFoundation
+import FirebaseStorage
+import FirebaseAuth
+import Firebase
 
 public enum UserRole: Int, Codable {
     case admin = 0
@@ -136,6 +141,8 @@ struct Group: Identifiable, Codable {
     var members: [User]
     var currentInfluencerId: String
     var date: Date
+    var promptFrequency: PromptFrequency
+    var notificationsMuted: Bool
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -143,14 +150,32 @@ struct Group: Identifiable, Codable {
         case members
         case currentInfluencerId
         case date
+        case promptFrequency
+        case notificationsMuted
     }
     
-    init(id: String = UUID().uuidString, name: String, members: [User] = [], currentInfluencerId: String? = nil, date: Date = Date()) {
+    init(id: String = UUID().uuidString, name: String, members: [User] = [], currentInfluencerId: String? = nil, date: Date = Date(), promptFrequency: PromptFrequency = .sixHours, notificationsMuted: Bool = false) {
         self.id = id
         self.name = name
         self.members = members
         self.currentInfluencerId = currentInfluencerId ?? UUID().uuidString
         self.date = date
+        self.promptFrequency = promptFrequency
+        self.notificationsMuted = notificationsMuted
+    }
+    
+    // Custom decoder to handle backwards compatibility
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        members = try container.decode([User].self, forKey: .members)
+        currentInfluencerId = try container.decode(String.self, forKey: .currentInfluencerId)
+        date = try container.decode(Date.self, forKey: .date)
+        
+        // Backwards compatibility - use default values if fields don't exist
+        promptFrequency = try container.decodeIfPresent(PromptFrequency.self, forKey: .promptFrequency) ?? .sixHours
+        notificationsMuted = try container.decodeIfPresent(Bool.self, forKey: .notificationsMuted) ?? false
     }
 }
 
@@ -228,7 +253,7 @@ struct DIMLEntry: Identifiable {
     }
 }
 
-struct Comment: Identifiable {
+struct Comment: Identifiable, Codable {
     let id: String
     let userId: String
     let text: String

@@ -35,10 +35,15 @@ struct AddEntryView: View {
             .navigationBarItems(leading: Button("Cancel") {
                 dismiss()
             }, trailing: Button("Save") {
-                store.addEntry(prompt: prompt, response: response, image: selectedImage)
-                if let entry = store.entries.first {
-                    onComplete?(entry)
-                }
+                let newEntry = DIMLEntry(
+                    userId: "sampleUser",
+                    prompt: prompt,
+                    response: response,
+                    image: selectedImage,
+                    frameSize: FrameSize.random
+                )
+                store.addEntry(newEntry)
+                onComplete?(newEntry)
                 dismiss()
             }.disabled(prompt.isEmpty || response.isEmpty))
             .sheet(isPresented: $showingImagePicker) {
@@ -50,6 +55,6 @@ struct AddEntryView: View {
 
 struct AddEntryView_Previews: PreviewProvider {
     static var previews: some View {
-        AddEntryView(store: EntryStore())
+        AddEntryView(store: EntryStore(groupId: "preview-group"))
     }
 }

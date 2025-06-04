@@ -1,17 +1,29 @@
 import Foundation
 import UserNotifications
 
-enum PromptFrequency: String, Codable {
-    case once = "Once per day"
-    case twice = "Twice per day"
-    case thrice = "Three times per day"
+enum PromptFrequency: String, Codable, CaseIterable {
+    case hourly = "Every hour"
+    case threeHours = "Every 3 hours"
+    case sixHours = "Every 6 hours"
     
     var numberOfPrompts: Int {
         switch self {
-        case .once: return 1
-        case .twice: return 2
-        case .thrice: return 3
+        case .hourly: return 12 // Roughly 12 prompts in a 12-hour active day
+        case .threeHours: return 4 // 4 prompts in 12 hours
+        case .sixHours: return 2 // 2 prompts in 12 hours
         }
+    }
+    
+    var intervalHours: Int {
+        switch self {
+        case .hourly: return 1
+        case .threeHours: return 3
+        case .sixHours: return 6
+        }
+    }
+    
+    var displayName: String {
+        return self.rawValue
     }
 }
 
@@ -92,126 +104,95 @@ class PromptScheduler {
                 return
             }
             
-            var timeSlots: [(TimeOfDay, TimeWindow)] = []
-            
-            // Determine time slots based on frequency
-            switch frequency {
-            case .once:
-                // Randomly choose morning, afternoon, or night
-                let randomPeriod = [TimeOfDay.morning, .afternoon, .night].randomElement()!
-                switch randomPeriod {
-                case .morning:
-                    timeSlots = [(randomPeriod, TimeWindow.morning)]
-                case .afternoon:
-                    timeSlots = [(randomPeriod, TimeWindow.afternoon)]
-                case .night:
-                    timeSlots = [(randomPeriod, TimeWindow.night)]
-                }
-                
-            case .twice:
-                // Choose two random non-repeating periods
-                let periods = Array(Set([TimeOfDay.morning, .afternoon, .night]).shuffled().prefix(2))
-                timeSlots = periods.map { period in
-                    switch period {
-                    case .morning: return (period, TimeWindow.morning)
-                    case .afternoon: return (period, TimeWindow.afternoon)
-                    case .night: return (period, TimeWindow.night)
-                    }
-                }
-                
-            case .thrice:
-                // Use all three periods in order
-                timeSlots = [
-                    (.morning, TimeWindow.morning),
-                    (.afternoon, TimeWindow.afternoon),
-                    (.night, TimeWindow.night)
-                ]
-            }
-            
             // Create a dispatch group to track when all notifications are scheduled
             let group = DispatchGroup()
             
-            // Schedule notifications for each time slot
-            for (timeOfDay, window) in timeSlots {
+            // Schedule notifications based on frequency throughout the day
+            let activeDayStart = 7 // 7 AM
+            let activeDayEnd = 21   // 9 PM (14 hour active day)
+            let intervalHours = frequency.intervalHours
+            
+            // Calculate how many notifications to schedule
+            let totalActiveHours = activeDayEnd - activeDayStart
+            let notificationCount = totalActiveHours / intervalHours
+            
+            for i in 0..<notificationCount {
                 group.enter()
-                self.scheduleNotification(
+                
+                // Calculate the hour for this notification
+                let notificationHour = activeDayStart + (i * intervalHours)
+                
+                // Determine which time period this falls into
+                let timeOfDay: TimeOfDay
+                if notificationHour < 12 {
+                    timeOfDay = .morning
+                } else if notificationHour < 17 {
+                    timeOfDay = .afternoon
+                } else {
+                    timeOfDay = .night
+                }
+                
+                // Schedule notification for this specific hour
+                self.scheduleHourlyNotification(
                     for: timeOfDay,
-                    window: window,
+                    at: notificationHour,
                     userId: influencerId,
-                    type: .prompt,
                     completion: {
                         group.leave()
                     }
                 )
             }
             
-            // When all notifications are scheduled, check the results
+            // When all notifications are scheduled, complete
             group.notify(queue: .main) {
                 completion?()
             }
         }
     }
     
-    private func findValidTime(in window: TimeWindow, baseDate: Date) -> Date? {
-        var attempts = 0
-        let maxAttempts = 10
-        
-        while attempts < maxAttempts {
-            // Get random hour and minute within the window
-            let hour = Int.random(in: window.start...window.end)
-            let minute = Int.random(in: 0...59)
-            
-            // Create date components
-            var dateComponents = calendar.dateComponents([.year, .month, .day], from: baseDate)
-            dateComponents.hour = hour
-            dateComponents.minute = minute
-            dateComponents.second = 0
-            
-            // Create the date
-            if let date = calendar.date(from: dateComponents),
-               window.isValidTime(hour, minute),
-               notificationManager.canSchedule(at: date, in: window) {
-                return date
-            }
-            
-            attempts += 1
-        }
-        
-        return nil
-    }
-    
-    private func scheduleNotification(for timeOfDay: TimeOfDay, window: TimeWindow, userId: String, type: NotificationType, completion: @escaping () -> Void) {
+    private func scheduleHourlyNotification(for timeOfDay: TimeOfDay, at hour: Int, userId: String, completion: @escaping () -> Void) {
         guard let prompt = promptManager.getRandomPrompt(for: timeOfDay) else {
             completion()
             return
         }
         
-        // Get tomorrow's date
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date())!
+        // Get today's date for scheduling throughout the influencer's day
+        let today = Date()
         
-        // Find a valid time for the notification
-        guard let scheduledDate = findValidTime(in: window, baseDate: tomorrow) else {
-            print("Could not find valid time for \(timeOfDay) notification")
+        // Create date components for the specific hour
+        var dateComponents = calendar.dateComponents([.year, .month, .day], from: today)
+        dateComponents.hour = hour
+        dateComponents.minute = Int.random(in: 0...59) // Random minute within the hour
+        dateComponents.second = 0
+        
+        // Create the scheduled date
+        guard let scheduledDate = calendar.date(from: dateComponents) else {
+            print("Could not create date for hour \(hour)")
             completion()
             return
         }
         
+        // If the time has already passed today, schedule for tomorrow
+        let finalDate = scheduledDate < Date() ? 
+            calendar.date(byAdding: .day, value: 1, to: scheduledDate)! : 
+            scheduledDate
+        
         let content = UNMutableNotificationContent()
-        content.title = "Time for your \(timeOfDay) reflection!"
+        content.title = "Time for your reflection!"
         content.body = prompt
         content.sound = .default
         
-        // Get date components for the scheduled date
-        let dateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: scheduledDate)
+        // Get final date components
+        let finalComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: finalDate)
         
-        // Create a unique but consistent identifier for this time period
-        let identifier = "\(type.rawValue)_\(userId)_\(timeOfDay)_\(dateComponents.year!)\(dateComponents.month!)\(dateComponents.day!)"
+        // Create identifier
+        let identifier = "prompt_\(userId)_\(hour)_\(finalComponents.year!)\(finalComponents.month!)\(finalComponents.day!)"
         
         // Format time for logging
-        let timeString = String(format: "%02d:%02d", dateComponents.hour!, dateComponents.minute!)
-        print("Scheduling \(timeOfDay) notification for tomorrow at \(timeString) local time")
+        let timeString = String(format: "%02d:%02d", finalComponents.hour!, finalComponents.minute!)
+        print("Scheduling prompt notification for \(finalDate > Date() ? "today" : "tomorrow") at \(timeString)")
         
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: finalComponents, repeats: false)
         let request = UNNotificationRequest(
             identifier: identifier,
             content: content,
@@ -220,14 +201,9 @@ class PromptScheduler {
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("Error scheduling \(timeOfDay) notification: \(error)")
+                print("Error scheduling notification for hour \(hour): \(error)")
             } else {
-                if let date = trigger.nextTriggerDate() {
-                    let formatter = DateFormatter()
-                    formatter.timeZone = TimeZone.current
-                    formatter.dateFormat = "MMM d, h:mm a"
-                    print("Successfully scheduled \(timeOfDay) notification for \(formatter.string(from: date))")
-                }
+                print("Successfully scheduled notification for hour \(hour)")
             }
             completion()
         }
@@ -329,7 +305,7 @@ class PromptScheduler {
     }
     
     private func runPromptTest(influencer: User, members: [User]) {
-        print("\nTesting Once per day:")
+        print("\nTesting Every 6 hours:")
         let checkNotifications: () -> Void = { [weak self] in
             self?.checkPendingNotifications(completion: { [weak self] in
                 self?.runResponseNotificationTest(influencer: influencer, members: members)
@@ -337,7 +313,7 @@ class PromptScheduler {
         }
         
         schedulePrompts(
-            for: .once,
+            for: .sixHours,
             influencerId: influencer.id,
             completion: checkNotifications
         )

@@ -264,7 +264,7 @@ struct CameraPreviewView: UIViewControllerRepresentable {
     
     func makeUIViewController(context: Context) -> CameraViewController {
         let controller = CameraViewController()
-        controller.onCapture = { [frameSize] image in
+        controller.onCapture = { image in
             onCapture(image)
         }
         controller.frameSize = frameSize
@@ -319,8 +319,6 @@ class CameraViewController: UIViewController {
             captureSession = AVCaptureSession()
             captureSession.sessionPreset = .photo
         }
-        
-        let position: AVCaptureDevice.Position = isFrontCamera ? .front : .back
         
         var camera: AVCaptureDevice?
         
