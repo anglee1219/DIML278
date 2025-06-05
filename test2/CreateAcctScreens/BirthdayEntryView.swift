@@ -27,9 +27,9 @@ struct BirthdayEntryView: View {
             
             VStack(spacing: 40) {
                 // Logo at the top
-                Image("DIML_People_Icon")
-                    .resizable()
-                    .frame(width: 60, height: 60)
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(.blue)
                     .padding(.top, 60)
                 
                 // Question text

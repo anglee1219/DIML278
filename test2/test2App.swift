@@ -89,20 +89,35 @@ struct test2App: App {
                     NavigationView {
                         BuildProfileFlowView()
                     }
+                    .onAppear {
+                        print("🏠 Showing BuildProfileFlowView - isCompletingProfile: \(authManager.isCompletingProfile)")
+                    }
                 } else if authManager.isAuthenticated {
                     NavigationView {
                         MainTabView(currentTab: .home)
                     }
                     .navigationViewStyle(StackNavigationViewStyle())
+                    .onAppear {
+                        print("🏠 Showing MainTabView - isAuthenticated: \(authManager.isAuthenticated)")
+                    }
                 } else {
                     NavigationView {
                         LoginScreen()
+                    }
+                    .onAppear {
+                        print("🏠 Showing LoginScreen - isAuthenticated: \(authManager.isAuthenticated), isCompletingProfile: \(authManager.isCompletingProfile)")
                     }
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
             .animation(.easeInOut(duration: 0.3), value: authManager.isCompletingProfile)
             .environmentObject(authManager)
+            .onChange(of: authManager.isAuthenticated) { newValue in
+                print("🔄 AuthState Changed - isAuthenticated: \(newValue)")
+            }
+            .onChange(of: authManager.isCompletingProfile) { newValue in
+                print("🔄 ProfileState Changed - isCompletingProfile: \(newValue)")
+            }
         }
     }
 }

@@ -15,27 +15,36 @@ struct BioEntryView: View {
     @State private var isLoading = false
     
     private func saveProfileToFirebase() {
+        print("🎯 saveProfileToFirebase() called")
+        
         guard let currentUser = Auth.auth().currentUser else {
+            print("❌ No authenticated user found")
             alertMessage = "No authenticated user found"
             showAlert = true
             return
         }
         
+        print("✅ Current user found: \(currentUser.uid)")
         isLoading = true
         
         // Get stored credentials and user data
         guard let email = UserDefaults.standard.string(forKey: "pending_email"),
               let _ = UserDefaults.standard.string(forKey: "pending_password") else {
+            print("❌ Missing credentials in UserDefaults")
             alertMessage = "Missing credentials. Please try creating your account again."
             showAlert = true
             isLoading = false
             return
         }
         
+        print("✅ Found credentials: \(email)")
+        
         // Get the zodiac sign and username from UserDefaults
         let zodiacSign = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
         let username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
         let name = UserDefaults.standard.string(forKey: "profile_name") ?? username
+        
+        print("✅ Profile data - username: \(username), name: \(name), zodiac: \(zodiacSign)")
         
         // Update ProfileViewModel with the username
         viewModel.username = username
@@ -67,11 +76,14 @@ struct BioEntryView: View {
             profileData["profileImageURL"] = imageURL
         }
         
+        print("🔥 About to save profile data to Firestore...")
+        
         // Save to Firestore using setData with merge
         let db = Firestore.firestore()
         let strongSelf = self // Capture self strongly since we're in a value type
         db.collection("users").document(currentUser.uid).setData(profileData, merge: true) { error in
             if let error = error {
+                print("❌ Firestore save error: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     strongSelf.alertMessage = error.localizedDescription
                     strongSelf.showAlert = true
@@ -80,34 +92,28 @@ struct BioEntryView: View {
                 return
             }
             
-            print("Successfully saved profile data to Firestore")
+            print("✅ Successfully saved profile data to Firestore")
             
             // Complete the sign up process
+            print("🔥 About to call completeSignUp...")
             strongSelf.authManager.completeSignUp { result in
+                print("🔥 completeSignUp callback called")
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
-                        print("Successfully completed sign up")
+                        print("✅ Successfully completed sign up")
+                        print("🔥 Setting isLoading = false, isCompletingProfile = false, isAuthenticated = true")
                         // First set loading to false
                         strongSelf.isLoading = false
-                        // Then update auth state
+                        // Then update auth state - let the main app handle navigation
                         withAnimation {
                             strongSelf.authManager.isCompletingProfile = false
                             strongSelf.authManager.isAuthenticated = true
-                            
-                            // Switch to the main interface (MainTabView)
-                            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                               let window = windowScene.windows.first {
-                                window.rootViewController = UIHostingController(rootView: 
-                                    NavigationView {
-                                        MainTabView(currentTab: .home)
-                                    }
-                                )
-                            }
                         }
+                        print("🔥 Auth state updated - isCompletingProfile: \(strongSelf.authManager.isCompletingProfile), isAuthenticated: \(strongSelf.authManager.isAuthenticated)")
                         
                     case .failure(let error):
-                        print("Failed to complete sign up: \(error.localizedDescription)")
+                        print("❌ Failed to complete sign up: \(error.localizedDescription)")
                         strongSelf.alertMessage = error.localizedDescription
                         strongSelf.showAlert = true
                         strongSelf.isLoading = false

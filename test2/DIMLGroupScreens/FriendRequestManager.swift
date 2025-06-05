@@ -20,7 +20,7 @@ public class FriendRequestManager: ObservableObject {
     private var sentRequestsListener: ListenerRegistration?
     
     private init() {
-        startListening()
+        setupAuthListener()
     }
     
     deinit {
@@ -28,8 +28,45 @@ public class FriendRequestManager: ObservableObject {
         sentRequestsListener?.remove()
     }
     
+    private func setupAuthListener() {
+        // Listen for auth state changes to reset data when user changes
+        _ = Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
+            if user != nil {
+                self?.startListening()
+            } else {
+                self?.clearAllData()
+            }
+        }
+    }
+    
+    public func clearAllData() {
+        print("🧹 FriendRequestManager: Clearing all data")
+        requestsListener?.remove()
+        sentRequestsListener?.remove()
+        
+        DispatchQueue.main.async {
+            self.pendingRequests.removeAll()
+            self.sentRequests.removeAll()
+        }
+    }
+    
     public func startListening() {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        guard let currentUserId = Auth.auth().currentUser?.uid else { 
+            clearAllData()
+            return 
+        }
+        
+        print("🔄 FriendRequestManager: Starting listeners for user: \(currentUserId)")
+        
+        // Clear existing data first
+        DispatchQueue.main.async {
+            self.pendingRequests.removeAll()
+            self.sentRequests.removeAll()
+        }
+        
+        // Remove existing listeners
+        requestsListener?.remove()
+        sentRequestsListener?.remove()
         
         // Listen for incoming requests
         requestsListener = db.collection("users")
@@ -44,10 +81,24 @@ public class FriendRequestManager: ObservableObject {
                 
                 self?.pendingRequests = documents.compactMap { document -> FriendRequest? in
                     let data = document.data()
+                    print("🔍 Raw request data: \(data)")
+                    print("🔍 Document ID: \(document.documentID)")
+                    print("🔍 fromUserId: \(data["fromUserId"] as? String ?? "nil")")
+                    print("🔍 from: \(data["from"] as? String ?? "nil")")
+                    
+                    let fromId = data["fromUserId"] as? String ?? data["from"] as? String ?? ""
+                    let toId = data["toUserId"] as? String ?? data["to"] as? String ?? ""
+                    
+                    // Fallback: if fromId is empty, use the document ID (which should be the sender's ID)
+                    let finalFromId = fromId.isEmpty ? document.documentID : fromId
+                    
+                    print("🔍 Final fromId: '\(finalFromId)'")
+                    print("🔍 Final toId: '\(toId)'")
+                    
                     return FriendRequest(
                         id: document.documentID,
-                        from: data["from"] as? String ?? "",
-                        to: data["to"] as? String ?? "",
+                        from: finalFromId,
+                        to: toId,
                         status: FriendRequestStatus(rawValue: data["status"] as? String ?? "") ?? .pending,
                         timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date()
                     )
@@ -69,8 +120,8 @@ public class FriendRequestManager: ObservableObject {
                     let data = document.data()
                     return FriendRequest(
                         id: document.documentID,
-                        from: data["from"] as? String ?? "",
-                        to: data["to"] as? String ?? "",
+                        from: data["fromUserId"] as? String ?? data["from"] as? String ?? "",
+                        to: data["toUserId"] as? String ?? data["to"] as? String ?? "",
                         status: FriendRequestStatus(rawValue: data["status"] as? String ?? "") ?? .pending,
                         timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date()
                     )
@@ -124,12 +175,12 @@ public class FriendRequestManager: ObservableObject {
             .document(currentUserId)
             .updateData(["status": FriendRequestStatus.accepted.rawValue])
         
-        // Add to friends arrays
+        // Add to friends arrays - use setData with merge to handle missing friends field
         try await db.collection("users").document(currentUserId)
-            .updateData(["friends": FieldValue.arrayUnion([senderId])])
+            .setData(["friends": FieldValue.arrayUnion([senderId])], merge: true)
         
         try await db.collection("users").document(senderId)
-            .updateData(["friends": FieldValue.arrayUnion([currentUserId])])
+            .setData(["friends": FieldValue.arrayUnion([currentUserId])], merge: true)
     }
     
     public func rejectFriendRequest(from senderId: String) async throws {

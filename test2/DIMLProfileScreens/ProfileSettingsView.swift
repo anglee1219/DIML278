@@ -54,9 +54,16 @@ struct ProfileSettingsView: View {
                     }
 
                     Button(action: {
-                        dismiss() // Dismiss the settings sheet first
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            authManager.signOut() // Then sign out
+                        print("🔴 Log out button tapped")
+                        print("🔴 About to call authManager.signOut()")
+                        
+                        // Dismiss immediately first
+                        dismiss()
+                        
+                        // Then logout after a brief delay to ensure clean dismissal
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            authManager.signOut()
+                            print("🔴 authManager.signOut() completed")
                         }
                     }) {
                         SettingsRow(icon: "arrow.backward.square", label: "Log out", isDestructive: true, showChevron: false)

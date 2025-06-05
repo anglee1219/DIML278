@@ -51,19 +51,16 @@ struct GroupListView: View {
     @State private var isRefreshing = false
     @State private var groupToLeave: Group?
     @State private var showLeaveConfirmation = false
-    @State private var swipedGroupId: String?
-    @State private var offset: CGFloat = 0
     @State private var isNavigating = false
     @State private var keyboardVisible = false
     @State private var statusRefreshTimer: Timer?
     @State private var lastRefresh = Date() // Force view updates for status changes
+    @State private var entryStoreCache: [String: EntryStore] = [:] // Add cache for EntryStore instances
     
     private func handleInitialSetup() {
-        if groupStore.groups.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                showingCreateGroup = true
-            }
-        }
+        // Remove automatic sheet trigger - let users choose to create groups manually
+        // This was causing unwanted popups when switching between user accounts
+        print("📋 GroupListView: Initial setup - user has \(groupStore.groups.count) groups")
     }
     
     private func checkCameraPermission() {
@@ -89,8 +86,14 @@ struct GroupListView: View {
         let currentUserId = Auth.auth().currentUser?.uid ?? ""
         let isInfluencer = group.currentInfluencerId == currentUserId
         
-        // Create a mock entry store to check for recent activity (in real app, this would be from GroupStore)
-        let entryStore = EntryStore(groupId: group.id)
+        // Use cached EntryStore or create new one and cache it
+        let entryStore: EntryStore
+        if let cachedStore = entryStoreCache[group.id] {
+            entryStore = cachedStore
+        } else {
+            entryStore = EntryStore(groupId: group.id)
+            entryStoreCache[group.id] = entryStore
+        }
         
         // Get the most recent entry to see what was just shared
         if let mostRecentEntry = entryStore.entries.max(by: { $0.timestamp < $1.timestamp }) {
@@ -312,175 +315,97 @@ struct GroupListView: View {
                     .padding(.horizontal, 24)
                 
                 // Main Content
-                ScrollView {
-                    RefreshableScrollView(onRefresh: { done in
-                        // Start refreshing
+                if groupStore.groups.isEmpty {
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            AnimatedMoonView(isRefreshing: $isRefreshing)
+                                .padding(.bottom, 20)
+                            
+                            Text("You have no Circles.")
+                                .font(.custom("Fredoka-Regular", size: 22))
+                                .fontWeight(.bold)
+                                .foregroundColor(.black)
+                            
+                            Text("Tap the ⊕ in the upper right corner\nto create a Circle!")
+                                .multilineTextAlignment(.center)
+                                .font(.custom("Markazi Text", size: 18))
+                                .foregroundColor(.black)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.top, 100)
+                    }
+                } else {
+                    List {
+                        ForEach(groupStore.groups) { group in
+                            GroupRowContent(
+                                group: group,
+                                groupStore: groupStore,
+                                getGroupStatus: getGroupStatus
+                            )
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .onLongPressGesture {
+                                print("🔴 DEBUG: Long press detected for group: \(group.name)")
+                                
+                                // Add haptic feedback to confirm the long press was detected
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                                impactFeedback.impactOccurred()
+                                
+                                groupToLeave = group
+                                showLeaveConfirmation = true
+                                print("🔴 DEBUG: showLeaveConfirmation set to: \(showLeaveConfirmation)")
+                                print("🔴 DEBUG: groupToLeave set to: \(group.name)")
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .background(Color.clear)
+                    .refreshable {
                         isRefreshing = true
-                        
-                        // Simulate refresh delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                             isRefreshing = false
-                            done()
-                        }
-                    }) {
-                        if groupStore.groups.isEmpty {
-                            VStack(spacing: 10) {
-                                AnimatedMoonView(isRefreshing: $isRefreshing)
-                                    .padding(.bottom, 20)
-                                
-                                Text("You have no Circles.")
-                                    .font(.custom("Fredoka-Regular", size: 22))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.black)
-                                
-                                Text("Tap the ⊕ in the upper right corner\nto create a Circle!")
-                                    .multilineTextAlignment(.center)
-                                    .font(.custom("Markazi Text", size: 18))
-                                    .foregroundColor(.black)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .padding(.top, 100)
-                        } else {
-                            VStack(spacing: 20) {
-                                ForEach(groupStore.groups) { group in
-                                    ZStack(alignment: .trailing) {
-                                        // Leave Button
-                                        Button {
-                                            groupToLeave = group
-                                            showLeaveConfirmation = true
-                                            withAnimation {
-                                                swipedGroupId = nil
-                                                offset = 0
-                                            }
-                                        } label: {
-                                            HStack {
-                                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                                Text("Leave")
-                                            }
-                                            .foregroundColor(.white)
-                                            .frame(width: 80, height: 70)
-                                            .background(Color.red)
-                                        }
-                                        .offset(x: swipedGroupId == group.id ? 0 : 80)
-                                        .opacity(swipedGroupId == group.id ? 1 : 0)
-                                        
-                                        // Main Content
-                                        HStack {
-                                            NavigationLink(destination: GroupDetailViewWrapper(groupId: group.id, groupStore: groupStore)) {
-                                                HStack(spacing: 12) {
-                                                    HStack(spacing: -8) {
-                                                        ForEach(0..<min(3, group.members.count), id: \.self) { _ in
-                                                            Circle()
-                                                                .fill(Color.gray.opacity(0.3))
-                                                                .frame(width: 40, height: 40)
-                                                        }
-                                                    }
-                                                    
-                                                    VStack(alignment: .leading) {
-                                                        Text(group.name)
-                                                            .font(.custom("Fredoka-Regular", size: 18))
-                                                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                                                        
-                                                        let status = getGroupStatus(for: group)
-                                                        Text(status.message)
-                                                            .font(.custom("Markazi Text", size: 16))
-                                                            .foregroundColor(status.color)
-                                                    }
-                                                    
-                                                    Spacer()
-                                                    
-                                                    VStack(alignment: .trailing) {
-                                                        Text("10:28 PM")
-                                                            .font(.footnote)
-                                                            .foregroundColor(.gray)
-                                                        
-                                                        Image(systemName: "chevron.right")
-                                                            .foregroundColor(.gray.opacity(0.6))
-                                                    }
-                                                }
-                                                .padding(.horizontal)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
-                                                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-                                                )
-                                            }
-                                            .buttonStyle(PlainButtonStyle())
-                                            .simultaneousGesture(
-                                                TapGesture()
-                                                    .onEnded { _ in
-                                                        if swipedGroupId == group.id {
-                                                            withAnimation {
-                                                                swipedGroupId = nil
-                                                                offset = 0
-                                                            }
-                                                        }
-                                                    }
-                                            )
-                                        }
-                                        .offset(x: swipedGroupId == group.id ? -80 : 0)
-                                        .gesture(
-                                            DragGesture()
-                                                .onChanged { gesture in
-                                                    if gesture.translation.width < 0 {
-                                                        withAnimation {
-                                                            swipedGroupId = group.id
-                                                            offset = -80
-                                                        }
-                                                    } else if gesture.translation.width > 0 {
-                                                        withAnimation {
-                                                            swipedGroupId = nil
-                                                            offset = 0
-                                                        }
-                                                    }
-                                                }
-                                                .onEnded { _ in
-                                                    withAnimation {
-                                                        if offset < -40 {
-                                                            swipedGroupId = group.id
-                                                            offset = -80
-                                                        } else {
-                                                            swipedGroupId = nil
-                                                            offset = 0
-                                                        }
-                                                    }
-                                                }
-                                        )
-                                    }
-                                    .padding(.horizontal)
-                                    .background(Color.clear)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                }
-                            }
-                            .padding(.top, 20)
                         }
                     }
-                }
-                .refreshable {
-                    isRefreshing = true
-                    // Add your refresh logic here
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                        isRefreshing = false
-                    }
-                }
-                .confirmationDialog(
-                    "Leave Circle",
-                    isPresented: $showLeaveConfirmation,
-                    presenting: groupToLeave
-                ) { group in
-                    Button("Leave \(group.name)", role: .destructive) {
-                        withAnimation {
-                            groupStore.deleteGroup(group)
-                        }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: { group in
-                    Text("Are you sure you want to leave '\(group.name)'?\nYou'll need to be invited back to rejoin.")
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: isSearchFocused)
             .background(Color(red: 1, green: 0.989, blue: 0.93).ignoresSafeArea())
             .navigationBarHidden(true)
+            .confirmationDialog(
+                "Leave Circle",
+                isPresented: $showLeaveConfirmation,
+                presenting: groupToLeave
+            ) { group in
+                Button("Leave \(group.name)", role: .destructive) {
+                    print("🔴 DEBUG: Confirmation dialog Leave button tapped for group: \(group.name)")
+                    let success = groupStore.leaveGroup(group)
+                    print("🔴 DEBUG: leaveGroup result: \(success)")
+                    if success {
+                        print("✅ Successfully left group: \(group.name)")
+                    } else {
+                        print("❌ Failed to leave group: \(group.name)")
+                    }
+                }
+                Button("Cancel", role: .cancel) { 
+                    print("🔴 DEBUG: Confirmation dialog Cancel button tapped")
+                }
+            } message: { group in
+                if group.members.count <= 1 {
+                    Text("You are the only member of '\(group.name)'. Leaving will delete the entire circle permanently.")
+                } else {
+                    Text("Are you sure you want to leave '\(group.name)'?\nYou'll need to be invited back to rejoin.")
+                }
+            }
+            .onChange(of: showLeaveConfirmation) { isShowing in
+                print("🔴 DEBUG: showLeaveConfirmation changed to: \(isShowing)")
+                if isShowing {
+                    print("🔴 DEBUG: groupToLeave is: \(groupToLeave?.name ?? "nil")")
+                }
+            }
+            .onChange(of: groupToLeave) { group in
+                print("🔴 DEBUG: groupToLeave changed to: \(group?.name ?? "nil")")
+            }
             .sheet(isPresented: $showingCreateGroup) {
                 CreateGroupView { newGroup in
                     groupStore.addGroup(newGroup)
@@ -507,16 +432,19 @@ struct GroupListView: View {
                 )
             }
             .scrollDismissesKeyboard(.immediately)
-            .contentShape(Rectangle())
+            // Remove contentShape to prevent interfering with swipe gestures
             .onTapGesture {
-                isSearchFocused = false
+                // Only dismiss keyboard if search is focused
+                if isSearchFocused {
+                    isSearchFocused = false
+                }
             }
             .ignoresSafeArea(.keyboard)
             .onAppear {
                 handleInitialSetup()
                 
                 // Start status refresh timer
-                statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+                statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
                     // Force view refresh by updating a state variable
                     DispatchQueue.main.async {
                         // This will trigger a re-render and update the status messages
@@ -585,6 +513,113 @@ private struct ScrollViewOffsetPreferenceKey: PreferenceKey {
     }
 }
 
+// MARK: - GroupRowContent Component
+struct GroupRowContent: View {
+    let group: Group
+    let groupStore: GroupStore
+    let getGroupStatus: (Group) -> (message: String, color: Color)
+    @State private var navigateToGroup = false
+    
+    var body: some View {
+        let currentUserId = Auth.auth().currentUser?.uid ?? ""
+        let otherMembers = group.members.filter { $0.id != currentUserId }
+        let displayMembers = Array(otherMembers.prefix(3)) // Show up to 3 members
+        
+        HStack(spacing: 12) {
+            HStack(spacing: -8) {
+                ForEach(displayMembers, id: \.id) { member in
+                    AsyncImage(url: URL(string: member.profileImageUrl ?? "")) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .overlay(
+                                Text(member.name.prefix(1).uppercased())
+                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white)
+                            )
+                    }
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                    )
+                }
+                
+                // Show a "+" circle if there are more than 3 other members
+                if otherMembers.count > 3 {
+                    Circle()
+                        .fill(Color.gray.opacity(0.2))
+                        .overlay(
+                            Text("+\(otherMembers.count - 3)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.gray)
+                        )
+                        .frame(width: 40, height: 40)
+                }
+                
+                // If no other members (only current user), show a single placeholder
+                if displayMembers.isEmpty {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Image(systemName: "person")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                        )
+                        .frame(width: 40, height: 40)
+                }
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.name)
+                    .font(.custom("Fredoka-Regular", size: 18))
+                    .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                
+                let status = getGroupStatus(group)
+                Text(status.message)
+                    .font(.custom("Markazi Text", size: 16))
+                    .foregroundColor(status.color)
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("10:28 PM")
+                    .font(.footnote)
+                    .foregroundColor(.gray)
+                
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.gray.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .frame(minHeight: 80)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
+                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        )
+        .onTapGesture {
+            print("🔴 DEBUG: Tap detected for group: \(group.name) - navigating")
+            navigateToGroup = true
+        }
+        .background(
+            NavigationLink(
+                destination: GroupDetailViewWrapper(groupId: group.id, groupStore: groupStore),
+                isActive: $navigateToGroup
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
+    }
+}
+
 // MARK: - Preview
 struct GroupListView_Previews: PreviewProvider {
     static var previews: some View {
@@ -593,3 +628,5 @@ struct GroupListView_Previews: PreviewProvider {
         }
     }
 }
+
+

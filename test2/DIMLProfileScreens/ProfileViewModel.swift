@@ -6,20 +6,25 @@ import FirebaseStorage
 class ProfileViewModel: ObservableObject {
     static let shared = ProfileViewModel()
     
+    private var isInitializing = true // Flag to prevent saving during initialization
+    
     @Published var name: String = "" {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
         }
     }
     
     @Published var username: String = "" {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
         }
     }
     
     @Published var pronouns: String = "" {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
             // Also save to UserDefaults for immediate access
             UserDefaults.standard.set(pronouns, forKey: "profile_pronouns")
@@ -28,12 +33,14 @@ class ProfileViewModel: ObservableObject {
     
     @Published var zodiac: String = "" {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
         }
     }
     
     @Published var birthday: Date = Date() {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
             // Also save to UserDefaults for immediate access
             UserDefaults.standard.set(birthday, forKey: "profile_birthday")
@@ -42,24 +49,28 @@ class ProfileViewModel: ObservableObject {
     
     @Published var location: String = "" {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
         }
     }
     
     @Published var school: String = "" {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
         }
     }
     
     @Published var interests: String = "" {
         didSet {
+            guard !isInitializing else { return }
             saveProfile()
         }
     }
     
     @Published var showLocation: Bool = true {
         didSet {
+            guard !isInitializing else { return }
             savePrivacySettings()
             objectWillChange.send()
         }
@@ -67,6 +78,7 @@ class ProfileViewModel: ObservableObject {
     
     @Published var showSchool: Bool = true {
         didSet {
+            guard !isInitializing else { return }
             savePrivacySettings()
             objectWillChange.send()
         }
@@ -74,6 +86,7 @@ class ProfileViewModel: ObservableObject {
     
     @Published var profileImageData: Data? {
         didSet {
+            guard !isInitializing else { return }
             saveProfileImage()
             // Cache the image data locally
             if let imageData = profileImageData {
@@ -102,6 +115,11 @@ class ProfileViewModel: ObservableObject {
             } else {
                 self?.clearProfile()
             }
+        }
+        
+        // Complete initialization after a brief delay to allow data loading
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.isInitializing = false
         }
     }
     
@@ -146,6 +164,10 @@ class ProfileViewModel: ObservableObject {
                 print("No profile document found")
                 // Try to load from UserDefaults as fallback
                 self?.loadFromUserDefaults()
+                // Mark initialization as complete even for fallback
+                DispatchQueue.main.async {
+                    self?.isInitializing = false
+                }
                 return
             }
             
@@ -176,6 +198,9 @@ class ProfileViewModel: ObservableObject {
                 // Always default to showing location and school unless explicitly set to false
                 self?.showLocation = data["showLocation"] as? Bool ?? true
                 self?.showSchool = data["showSchool"] as? Bool ?? true
+                
+                // Mark initialization as complete
+                self?.isInitializing = false
                 
                 // Load profile image from Firebase Storage
                 if let imageURL = data["profileImageURL"] as? String,
@@ -221,6 +246,8 @@ class ProfileViewModel: ObservableObject {
     }
     
     private func clearProfile() {
+        print("🧹 ProfileViewModel: Clearing all profile data")
+        
         name = ""
         username = ""
         pronouns = ""
@@ -233,10 +260,34 @@ class ProfileViewModel: ObservableObject {
         showSchool = true
         profileImageData = nil
         
-        // Clear cached image
+        // Clear ALL user-specific data from UserDefaults
+        let keysToRemove = [
+            "profile_name",
+            "profile_username", 
+            "profile_pronouns",
+            "profile_zodiac",
+            "profile_location",
+            "profile_school",
+            "profile_interests",
+            "profile_birthday",
+            "profile_image",
+            "profile_image_url",
+            "privacy_show_location",
+            "privacy_show_school"
+        ]
+        
+        keysToRemove.forEach { key in
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        
+        // Clear cached images for any user IDs
         if let userId = Auth.auth().currentUser?.uid {
             UserDefaults.standard.removeObject(forKey: "cached_profile_image_\(userId)")
+            UserDefaults.standard.removeObject(forKey: "profile_image_url_\(userId)")
         }
+        
+        UserDefaults.standard.synchronize()
+        print("🧹 ProfileViewModel: Profile data cleared")
     }
     
     func saveProfile() {

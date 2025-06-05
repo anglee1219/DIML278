@@ -11,9 +11,10 @@ class AuthenticationManager: ObservableObject {
     private init() {
         // Set up Firebase Auth state listener
         _ = Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
-            // Only set isAuthenticated to true if we're not in profile completion mode
+            // Always update currentUser when the auth state changes
             if let self = self {
                 self.currentUser = user
+                // Only set isAuthenticated to true if we're not in profile completion mode
                 if !self.isCompletingProfile {
                     self.isAuthenticated = user != nil
                 }
@@ -84,23 +85,32 @@ class AuthenticationManager: ObservableObject {
     }
     
     func completeSignUp(completion: @escaping (Result<Void, Error>) -> Void) {
+        print("🔥 AuthManager.completeSignUp() called")
+        
         guard let email = UserDefaults.standard.string(forKey: "pending_email"),
               let password = UserDefaults.standard.string(forKey: "pending_password") else {
+            print("❌ AuthManager: Missing credentials for completeSignUp")
             let error = NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing credentials"])
             completion(.failure(error))
             return
         }
         
+        print("✅ AuthManager: Found credentials, signing in with email: \(email)")
+        
         Auth.auth().signIn(withEmail: email, password: password) { [weak self] authResult, error in
             DispatchQueue.main.async {
                 if let error = error {
+                    print("❌ AuthManager: Sign in failed: \(error.localizedDescription)")
                     self?.isCompletingProfile = false
                     completion(.failure(error))
                     return
                 }
                 
+                print("✅ AuthManager: Sign in successful")
+                
                 // Update Firestore to mark profile as completed
                 if let userId = authResult?.user.uid {
+                    print("🔥 AuthManager: Updating Firestore for user: \(userId)")
                     let db = Firestore.firestore()
                     
                     // Get all profile data from UserDefaults
@@ -125,13 +135,16 @@ class AuthenticationManager: ObservableObject {
                     db.collection("users").document(userId).setData(profileData, merge: true) { error in
                         DispatchQueue.main.async {
                             if let error = error {
-                                print("Error updating profile completion status: \(error.localizedDescription)")
+                                print("❌ AuthManager: Firestore update failed: \(error.localizedDescription)")
                                 self?.isCompletingProfile = false
                                 completion(.failure(error))
                                 return
                             }
                             
+                            print("✅ AuthManager: Firestore update successful")
+                            
                             // Set authentication state after successful profile completion
+                            print("🔥 AuthManager: Setting final auth state")
                             self?.isCompletingProfile = false
                             self?.isAuthenticated = true
                             self?.currentUser = authResult?.user
@@ -141,11 +154,12 @@ class AuthenticationManager: ObservableObject {
                             UserDefaults.standard.removeObject(forKey: "pending_password")
                             
                             // Keep all profile data in UserDefaults for future use
-                            print("Successfully completed sign up")
+                            print("✅ AuthManager: Successfully completed sign up")
                             completion(.success(()))
                         }
                     }
                 } else {
+                    print("❌ AuthManager: User ID not found after sign in")
                     self?.isCompletingProfile = false
                     completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User ID not found"])))
                 }
@@ -169,7 +183,25 @@ class AuthenticationManager: ObservableObject {
     }
     
     func signOut() {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
+        print("🔴 signOut() called")
+        print("🔴 Auth.auth().currentUser: \(Auth.auth().currentUser?.uid ?? "nil")")
+        print("🔴 AuthManager.currentUser: \(self.currentUser?.uid ?? "nil")")
+        print("🔴 isCompletingProfile: \(self.isCompletingProfile)")
+        print("🔴 isAuthenticated: \(self.isAuthenticated)")
+        
+        guard let userId = Auth.auth().currentUser?.uid else { 
+            print("🔴 No current user found in Firebase Auth, signOut() returning early")
+            // Even if Firebase Auth has no user, still reset our local state
+            DispatchQueue.main.async {
+                self.isAuthenticated = false
+                self.isCompletingProfile = false
+                self.currentUser = nil
+                print("🔴 Reset local auth state anyway")
+            }
+            return 
+        }
+        
+        print("🔴 Current user ID: \(userId)")
         
         do {
             // Clear Firestore profile completion status
@@ -183,10 +215,17 @@ class AuthenticationManager: ObservableObject {
                 }
             }
             
+            print("🔴 About to call Auth.auth().signOut()")
             try Auth.auth().signOut()
-            self.isAuthenticated = false
-            self.isCompletingProfile = false
-            self.currentUser = nil
+            print("🔴 Firebase signOut successful")
+            
+            // Ensure UI updates happen on main thread
+            DispatchQueue.main.async {
+                self.isAuthenticated = false
+                self.isCompletingProfile = false
+                self.currentUser = nil
+                print("🔴 Updated AuthenticationManager properties on main thread")
+            }
             
             // Clear all user data from UserDefaults
             let userDefaultsKeys = [
@@ -213,9 +252,17 @@ class AuthenticationManager: ObservableObject {
             
             // Synchronize UserDefaults to ensure changes are saved
             UserDefaults.standard.synchronize()
+            print("🔴 Cleared UserDefaults")
             
         } catch {
-            print("Error signing out: \(error.localizedDescription)")
+            print("🔴 Error signing out: \(error.localizedDescription)")
+            // Still reset local state even if Firebase signout fails
+            DispatchQueue.main.async {
+                self.isAuthenticated = false
+                self.isCompletingProfile = false
+                self.currentUser = nil
+                print("🔴 Reset local auth state after error")
+            }
         }
     }
     

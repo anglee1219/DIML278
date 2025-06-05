@@ -148,6 +148,7 @@ struct Group: Identifiable, Codable, Equatable {
         case id
         case name
         case members
+        case memberIds
         case currentInfluencerId
         case date
         case promptFrequency
@@ -164,18 +165,47 @@ struct Group: Identifiable, Codable, Equatable {
         self.notificationsMuted = notificationsMuted
     }
     
-    // Custom decoder to handle backwards compatibility
+    // Custom decoder to handle Firestore data and backwards compatibility
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        
         id = try container.decode(String.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
-        members = try container.decode([User].self, forKey: .members)
         currentInfluencerId = try container.decode(String.self, forKey: .currentInfluencerId)
-        date = try container.decode(Date.self, forKey: .date)
+        
+        // Handle date - could be Date or Firestore Timestamp
+        if let timestamp = try? container.decode(Date.self, forKey: .date) {
+            date = timestamp
+        } else {
+            // Fallback to current date if decoding fails
+            date = Date()
+        }
+        
+        // Handle members - could be array of User objects or memberIds
+        if let membersArray = try? container.decode([User].self, forKey: .members) {
+            members = membersArray
+        } else {
+            // If we can't decode members directly, create empty array
+            // The Firestore listener will handle fetching member details
+            members = []
+        }
         
         // Backwards compatibility - use default values if fields don't exist
         promptFrequency = try container.decodeIfPresent(PromptFrequency.self, forKey: .promptFrequency) ?? .sixHours
         notificationsMuted = try container.decodeIfPresent(Bool.self, forKey: .notificationsMuted) ?? false
+    }
+    
+    // Custom encoder for proper Firestore format
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(members, forKey: .members)
+        try container.encode(currentInfluencerId, forKey: .currentInfluencerId)
+        try container.encode(date, forKey: .date)
+        try container.encode(promptFrequency, forKey: .promptFrequency)
+        try container.encode(notificationsMuted, forKey: .notificationsMuted)
     }
     
     // Equatable conformance
@@ -229,6 +259,27 @@ enum FrameSize: String, CaseIterable, Codable {
     }
 }
 
+struct UserReaction: Identifiable, Codable, Equatable {
+    let id: String
+    let userId: String
+    let emoji: String
+    let timestamp: Date
+    
+    init(id: String = UUID().uuidString, userId: String, emoji: String, timestamp: Date = Date()) {
+        self.id = id
+        self.userId = userId
+        self.emoji = emoji
+        self.timestamp = timestamp
+    }
+    
+    static func == (lhs: UserReaction, rhs: UserReaction) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.userId == rhs.userId &&
+               lhs.emoji == rhs.emoji &&
+               lhs.timestamp == rhs.timestamp
+    }
+}
+
 struct DIMLEntry: Identifiable, Equatable {
     let id: String
     let userId: String
@@ -238,7 +289,8 @@ struct DIMLEntry: Identifiable, Equatable {
     let imageURL: String?
     let timestamp: Date
     var comments: [Comment]
-    var reactions: [String: Int]
+    var reactions: [String: Int] // Legacy - keeping for backwards compatibility
+    var userReactions: [UserReaction] // New - individual user reactions
     let frameSize: FrameSize
     
     init(id: String = UUID().uuidString, 
@@ -250,6 +302,7 @@ struct DIMLEntry: Identifiable, Equatable {
          timestamp: Date = Date(),
          comments: [Comment] = [], 
          reactions: [String: Int] = [:], 
+         userReactions: [UserReaction] = [],
          frameSize: FrameSize? = nil) {
         self.id = id
         self.userId = userId
@@ -260,7 +313,25 @@ struct DIMLEntry: Identifiable, Equatable {
         self.timestamp = timestamp
         self.comments = comments
         self.reactions = reactions
+        self.userReactions = userReactions
         self.frameSize = frameSize ?? FrameSize.random
+    }
+    
+    // Helper methods for new reaction system
+    func getUserReaction(for userId: String) -> UserReaction? {
+        return userReactions.first { $0.userId == userId }
+    }
+    
+    func getReactionCounts() -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for reaction in userReactions {
+            counts[reaction.emoji, default: 0] += 1
+        }
+        return counts
+    }
+    
+    func getUsersWhoReacted() -> [String] {
+        return Array(Set(userReactions.map { $0.userId }))
     }
     
     // Equatable conformance
@@ -273,6 +344,7 @@ struct DIMLEntry: Identifiable, Equatable {
                lhs.timestamp == rhs.timestamp &&
                lhs.comments == rhs.comments &&
                lhs.reactions == rhs.reactions &&
+               lhs.userReactions == rhs.userReactions &&
                lhs.frameSize == rhs.frameSize
         // Note: We don't compare UIImage since it's not Equatable
     }
@@ -283,13 +355,26 @@ struct Comment: Identifiable, Codable, Equatable {
     let userId: String
     let text: String
     let timestamp: Date
+    let imageData: Data? // For storing photo comments
+    let imageURL: String? // For Firebase Storage URLs
+    
+    init(id: String = UUID().uuidString, userId: String, text: String, timestamp: Date = Date(), imageData: Data? = nil, imageURL: String? = nil) {
+        self.id = id
+        self.userId = userId
+        self.text = text
+        self.timestamp = timestamp
+        self.imageData = imageData
+        self.imageURL = imageURL
+    }
     
     // Equatable conformance
     static func == (lhs: Comment, rhs: Comment) -> Bool {
         return lhs.id == rhs.id &&
                lhs.userId == rhs.userId &&
                lhs.text == rhs.text &&
-               lhs.timestamp == rhs.timestamp
+               lhs.timestamp == rhs.timestamp &&
+               lhs.imageData == rhs.imageData &&
+               lhs.imageURL == rhs.imageURL
     }
 }
 

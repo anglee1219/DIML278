@@ -27,12 +27,11 @@ struct CreateProfileView: View {
                     .ignoresSafeArea()
                 
                 VStack(spacing: 30) {
-                    // Logo
-                    VStack(spacing: 5) {
-                        Image("DIML_People_Icon") // Make sure to add this asset
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 60, height: 60)
+                    // Header
+                    VStack(spacing: 15) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.blue)
                         
                         Image("DIML_Text_Logo") // Make sure to add this asset
                             .resizable()

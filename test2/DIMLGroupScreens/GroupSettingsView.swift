@@ -35,6 +35,7 @@ struct GroupSettingsView: View {
     @State private var selectedFriend: User?
     @State private var isUpdatingSettings = false
     @State private var showClearEntriesAlert = false
+    @State private var showLeaveGroupAlert = false
     
     private let promptScheduler = PromptScheduler.shared
     
@@ -236,6 +237,58 @@ struct GroupSettingsView: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(Color.red.opacity(0.1))
+                            .cornerRadius(10)
+                        }
+                        
+                        // Leave/Delete Group Section
+                        Text("Circle Management")
+                            .font(.custom("Markazi Text", size: 18))
+                            .padding(.top, 16)
+                        
+                        Text("Leave this circle")
+                            .font(.custom("Markazi Text", size: 14))
+                            .foregroundColor(.gray)
+                            .padding(.bottom, 4)
+                        
+                        // Info about auto-deletion
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.blue)
+                                .font(.system(size: 14))
+                            Text("Circles automatically delete when only 1 member remains")
+                                .font(.custom("Markazi Text", size: 13))
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                        }
+                        .padding(.bottom, 4)
+                        
+                        HStack {
+                            Image(systemName: "hand.point.left")
+                                .foregroundColor(.gray)
+                                .font(.system(size: 14))
+                            Text("💡 You can also long press on circles in the main list to leave")
+                                .font(.custom("Markazi Text", size: 13))
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                        }
+                        .padding(.bottom, 8)
+                        
+                        // Leave Group Button
+                        Button(action: {
+                            showLeaveGroupAlert = true
+                        }) {
+                            HStack {
+                                Image(systemName: "person.badge.minus")
+                                    .foregroundColor(.orange)
+                                Text("Leave Circle")
+                                    .foregroundColor(.orange)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.orange.opacity(0.1))
                             .cornerRadius(10)
                         }
                         
@@ -447,15 +500,25 @@ struct GroupSettingsView: View {
         } message: {
             Text("This will permanently delete all \(entryStore.entries.count) entries for this group. This action cannot be undone.")
         }
+        .alert("Leave Circle", isPresented: $showLeaveGroupAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Leave", role: .destructive) {
+                let success = groupStore.leaveGroup(group)
+                if success {
+                    // Group was successfully left or deleted, dismiss settings and return to main view
+                    isPresented = false
+                }
+            }
+        } message: {
+            if group.members.count <= 1 {
+                Text("You are the only member of '\(group.name)'. Leaving will delete the entire circle permanently.")
+            } else {
+                Text("Are you sure you want to leave '\(group.name)'? You'll need to be re-invited to rejoin.")
+            }
+        }
         .sheet(isPresented: $showFriendProfile) {
             if let friend = selectedFriend {
-                let username = friend.username ?? "@\(friend.name.lowercased().replacingOccurrences(of: " ", with: ""))"
-                FriendProfileView(user: SuggestedUser(
-                    name: friend.name,
-                    username: username,
-                    mutualFriends: 0,
-                    source: "Friends"
-                ))
+                FriendProfileView(user: friend)
             }
         }
         .onAppear {

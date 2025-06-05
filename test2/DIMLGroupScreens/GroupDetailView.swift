@@ -1809,13 +1809,12 @@ struct GroupDetailView: View {
                             Circle()
                                 .fill(member.id == group.currentInfluencerId ? 
                                       Color(red: 1.0, green: 0.815, blue: 0.0) : 
-                                      Color.gray.opacity(0.3))
+                                      getPlaceholderColor(for: member.id))
                                 .frame(width: 50, height: 50)
                                 .overlay(
                                     Text(member.name.prefix(1).uppercased())
                                         .font(.custom("Fredoka-Medium", size: 20))
-                                        .foregroundColor(member.id == group.currentInfluencerId ? 
-                                                       .white : .gray)
+                                        .foregroundColor(.white)
                                 )
                             
                             Text(member.name)
@@ -1836,6 +1835,11 @@ struct GroupDetailView: View {
             }
         }
         .padding(.vertical, 8)
+    }
+    
+    // Helper function to get consistent placeholder colors
+    private func getPlaceholderColor(for userId: String) -> Color {
+        return Color.gray.opacity(0.3) // Consistent light grey for all users
     }
     
     private var influencerEntryView: some View {
@@ -1919,60 +1923,22 @@ struct GroupDetailView: View {
                         .padding(.top, 12)
                         .padding(.bottom, 16)
                     }
-                    
-                    // Reactions and comments section for non-influencers
-                    VStack(spacing: 12) {
-                        Divider()
-                            .padding(.horizontal, 16)
-                        
-                        // Reaction buttons
-                        HStack(spacing: 20) {
-                            Button(action: {
-                                store.addReaction(to: entry.id, reaction: "❤️")
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "heart")
-                                        .foregroundColor(.red)
-                                    Text("\(entry.reactions["❤️", default: 0])")
-                                        .font(.custom("Fredoka-Regular", size: 14))
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                            
-                            Button(action: {
-                                store.addReaction(to: entry.id, reaction: "🔥")
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "flame")
-                                        .foregroundColor(.orange)
-                                    Text("\(entry.reactions["🔥", default: 0])")
-                                        .font(.custom("Fredoka-Regular", size: 14))
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                            
-                            Button(action: {
-                                selectedEntryForComments = entry
-                                showComments = true
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "message")
-                                        .foregroundColor(.blue)
-                                    Text("Comment (\(entry.comments.count))")
-                                        .font(.custom("Fredoka-Regular", size: 14))
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 16)
-                    }
                 }
                 .background(Color(red: 1.0, green: 0.95, blue: 0.80))
                 .cornerRadius(15)
                 .padding(.horizontal)
+                .overlay(
+                    // New reaction button positioned in bottom right corner
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            ReactionButton(entryId: entry.id, entryStore: store)
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 20)
+                        }
+                    }
+                )
             )
         } else {
             // Influencer hasn't posted yet - show waiting message
@@ -2099,7 +2065,7 @@ struct GroupDetailView: View {
     // MARK: - Helper Methods
     
     private func sendTestNotifications() {
-        guard let currentUserId = Auth.auth().currentUser?.uid else {
+        guard Auth.auth().currentUser?.uid != nil else {
             print("🧪 ❌ No current user ID")
             return
         }

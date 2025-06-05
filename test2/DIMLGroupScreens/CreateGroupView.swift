@@ -64,19 +64,23 @@ struct CreateGroupView: View {
 struct CreateGroupView: View {
     var onGroupCreated: (Group) -> Void
     @Environment(\.dismiss) var dismiss
+    @StateObject private var friendsManager = FriendsManager.shared
 
     @State private var groupName = ""
     @State private var newMembers: [User] = []
-    @State private var myFriends: [User] = existingFriends
     @State private var searchText = ""
     @State private var currentPage = 0
-    @State private var recentlyAdded: String? = nil
     private let friendsPerPage = 6
     private let gridSpacing: CGFloat = 15
     private let profileSize: CGFloat = 100
     
     private let backgroundColor = Color(red: 1, green: 0.988, blue: 0.929)
     private let yellowColor = Color(red: 1.0, green: 0.815, blue: 0.0)
+    
+    // Use real friends from FriendsManager
+    private var myFriends: [User] {
+        return friendsManager.friends
+    }
     
     // Filtered friends based on search text
     private var filteredFriends: [User] {
@@ -85,20 +89,9 @@ struct CreateGroupView: View {
         }
         return myFriends.filter { friend in
             friend.name.lowercased().contains(searchText.lowercased()) ||
-            (friend.username?.lowercased().contains(searchText.lowercased()) ?? false)
-        }
-    }
-    
-    private var filteredSuggestions: [SuggestedUser] {
-        if searchText.isEmpty {
-            return sampleSuggestions.filter { suggestion in
-                !myFriends.contains(where: { $0.name == suggestion.name })
-            }
-        }
-        return sampleSuggestions.filter { person in
-            !myFriends.contains(where: { $0.name == person.name }) &&
-            (person.name.lowercased().contains(searchText.lowercased()) ||
-             person.username.lowercased().contains(searchText.lowercased()))
+            (friend.username?.lowercased().contains(searchText.lowercased()) ?? false) ||
+            (friend.location?.lowercased().contains(searchText.lowercased()) ?? false) ||
+            (friend.school?.lowercased().contains(searchText.lowercased()) ?? false)
         }
     }
 
@@ -211,164 +204,151 @@ struct CreateGroupView: View {
 
                     // Friends Grid
                     VStack(alignment: .leading) {
-                        GeometryReader { geometry in
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 0) {
-                                    ForEach(0..<numberOfPages, id: \.self) { page in
-                                        VStack {
-                                            LazyHGrid(
-                                                rows: [
-                                                    GridItem(.fixed(140), spacing: gridSpacing),
-                                                    GridItem(.fixed(140), spacing: gridSpacing)
-                                                ],
-                                                spacing: gridSpacing
-                                            ) {
-                                                ForEach(Array(friendsForPage(page)), id: \.id) { friend in
-                                                    VStack {
-                                                        ZStack(alignment: .topTrailing) {
-                                                            Circle()
-                                                                .fill(Color.white)
-                                                                .frame(width: profileSize, height: profileSize)
-                                                                .shadow(color: .black.opacity(0.1), radius: 2)
-                                                            
-                                                            // Plus button
-                                                            Button(action: {
-                                                                if !newMembers.contains(where: { $0.id == friend.id }) {
-                                                                    withAnimation {
-                                                                        newMembers.append(friend)
-                                                                    }
-                                                                } else {
-                                                                    if let index = newMembers.firstIndex(where: { $0.id == friend.id }) {
-                                                                        newMembers.remove(at: index)
-                                                                    }
+                        if filteredFriends.isEmpty {
+                            // Empty state for no friends
+                            VStack(spacing: 16) {
+                                Image(systemName: searchText.isEmpty ? "person.2.circle" : "magnifyingglass")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.gray.opacity(0.6))
+                                
+                                Text(searchText.isEmpty ? "No friends yet" : "No friends match your search")
+                                    .font(.custom("Markazi Text", size: 20))
+                                    .foregroundColor(.gray)
+                                
+                                Text(searchText.isEmpty ? "Add friends to start creating circles with them" : "Try a different search term")
+                                    .font(.custom("Markazi Text", size: 16))
+                                    .foregroundColor(.gray.opacity(0.8))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+                                
+                                if searchText.isEmpty {
+                                    Text("💡 Add friends from the main Add Friends screen first")
+                                        .font(.custom("Markazi Text", size: 14))
+                                        .foregroundColor(yellowColor)
+                                        .padding(.top, 8)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 60)
+                            .background(Color.white.opacity(0.3))
+                            .cornerRadius(16)
+                            .padding(.horizontal)
+                        } else {
+                            GeometryReader { geometry in
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 0) {
+                                        ForEach(0..<numberOfPages, id: \.self) { page in
+                                            VStack {
+                                                LazyHGrid(
+                                                    rows: [
+                                                        GridItem(.fixed(140), spacing: gridSpacing),
+                                                        GridItem(.fixed(140), spacing: gridSpacing)
+                                                    ],
+                                                    spacing: gridSpacing
+                                                ) {
+                                                    ForEach(Array(friendsForPage(page)), id: \.id) { friend in
+                                                        VStack {
+                                                            ZStack(alignment: .topTrailing) {
+                                                                // Profile Picture
+                                                                AsyncImage(url: URL(string: friend.profileImageUrl ?? "")) { image in
+                                                                    image
+                                                                        .resizable()
+                                                                        .scaledToFill()
+                                                                } placeholder: {
+                                                                    Circle()
+                                                                        .fill(Color.gray.opacity(0.3))
+                                                                        .overlay(
+                                                                            Text(friend.name.prefix(1).uppercased())
+                                                                                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                                                                                .foregroundColor(.white)
+                                                                        )
                                                                 }
-                                                            }) {
-                                                                Image(systemName: newMembers.contains(where: { $0.id == friend.id }) ? "checkmark.circle.fill" : "plus.circle.fill")
-                                                                    .foregroundColor(newMembers.contains(where: { $0.id == friend.id }) ? .green : .blue)
-                                                                    .font(.system(size: 24))
-                                                                    .background(Color.white)
-                                                                    .clipShape(Circle())
+                                                                .frame(width: profileSize, height: profileSize)
+                                                                .clipShape(Circle())
+                                                                .overlay(
+                                                                    Circle()
+                                                                        .stroke(Color.white, lineWidth: 3)
+                                                                        .shadow(color: .black.opacity(0.1), radius: 2)
+                                                                )
+                                                                
+                                                                // Plus button
+                                                                Button(action: {
+                                                                    if !newMembers.contains(where: { $0.id == friend.id }) {
+                                                                        withAnimation {
+                                                                            newMembers.append(friend)
+                                                                        }
+                                                                    } else {
+                                                                        if let index = newMembers.firstIndex(where: { $0.id == friend.id }) {
+                                                                            newMembers.remove(at: index)
+                                                                        }
+                                                                    }
+                                                                }) {
+                                                                    Image(systemName: newMembers.contains(where: { $0.id == friend.id }) ? "checkmark.circle.fill" : "plus.circle.fill")
+                                                                        .foregroundColor(newMembers.contains(where: { $0.id == friend.id }) ? .green : .blue)
+                                                                        .font(.system(size: 24))
+                                                                        .background(Color.white)
+                                                                        .clipShape(Circle())
+                                                                }
+                                                                .offset(x: 5, y: -5)
                                                             }
-                                                            .offset(x: 5, y: -5)
+                                                            
+                                                            Text(friend.name)
+                                                                .font(.custom("Markazi Text", size: 16))
+                                                                .foregroundColor(.black)
+                                                                .lineLimit(1)
                                                         }
-                                                        
-                                                        Text(friend.name)
-                                                            .font(.custom("Markazi Text", size: 16))
-                                                            .foregroundColor(.black)
-                                                            .lineLimit(1)
+                                                        .frame(width: profileSize)
                                                     }
-                                                    .frame(width: profileSize)
+                                                }
+                                            }
+                                            .frame(width: geometry.size.width)
+                                        }
+                                    }
+                                }
+                                .content.offset(x: CGFloat(currentPage) * -geometry.size.width)
+                                .frame(width: geometry.size.width, alignment: .leading)
+                                .gesture(
+                                    DragGesture()
+                                        .onEnded { value in
+                                            let threshold: CGFloat = 50
+                                            if value.translation.width < -threshold && currentPage < numberOfPages - 1 {
+                                                withAnimation {
+                                                    currentPage += 1
+                                                }
+                                            } else if value.translation.width > threshold && currentPage > 0 {
+                                                withAnimation {
+                                                    currentPage -= 1
                                                 }
                                             }
                                         }
-                                        .frame(width: geometry.size.width)
-                                    }
-                                }
-                            }
-                            .content.offset(x: CGFloat(currentPage) * -geometry.size.width)
-                            .frame(width: geometry.size.width, alignment: .leading)
-                            .gesture(
-                                DragGesture()
-                                    .onEnded { value in
-                                        let threshold: CGFloat = 50
-                                        if value.translation.width < -threshold && currentPage < numberOfPages - 1 {
-                                            withAnimation {
-                                                currentPage += 1
-                                            }
-                                        } else if value.translation.width > threshold && currentPage > 0 {
-                                            withAnimation {
-                                                currentPage -= 1
-                                            }
-                                        }
-                                    }
-                            )
-                        }
-                        .frame(height: 300)
-                        
-                        // Page Indicator
-                        if numberOfPages > 1 {
-                            HStack(spacing: 8) {
-                                ForEach(0..<numberOfPages, id: \.self) { page in
-                                    Circle()
-                                        .fill(page == currentPage ? yellowColor : Color.gray.opacity(0.3))
-                                        .frame(width: 8, height: 8)
-                                }
-                            }
-                            .padding(.top, 10)
-                            .padding(.horizontal)
-                        }
-                    }
-                }
-
-                // MARK: - People You May Know
-                VStack(alignment: .leading, spacing: 15) {
-                    Text("People You May Know")
-                        .font(.custom("Markazi Text", size: 28))
-                        .foregroundColor(yellowColor)
-                        .padding(.horizontal)
-
-                    ForEach(filteredSuggestions) { person in
-                        HStack(spacing: 15) {
-                            // Profile Image
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 50, height: 50)
-                                .shadow(color: .black.opacity(0.1), radius: 2)
-                            
-                            // Name and Username
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(person.name)
-                                    .font(.custom("Markazi Text", size: 18))
-                                Text(person.username)
-                                    .font(.custom("Markazi Text", size: 14))
-                                    .foregroundColor(.gray)
-                            }
-                            
-                            Spacer()
-                            
-                            // Add Friend Button with Animation
-                            Button(action: {
-                                let newFriend = User(id: UUID().uuidString, name: person.name, username: person.username)
-                                // First animation - button changes
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    recentlyAdded = person.name
-                                }
-                                
-                                // Delay before adding to myFriends
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                        myFriends.append(newFriend)
-                                        recentlyAdded = nil
-                                    }
-                                }
-                            }) {
-                                HStack(spacing: 4) {
-                                    Text(recentlyAdded == person.name ? "Added" : "Add Friend")
-                                        .foregroundColor(recentlyAdded == person.name ? .black : .white)
-                                    Image(systemName: recentlyAdded == person.name ? "checkmark" : "person.badge.plus")
-                                        .foregroundColor(recentlyAdded == person.name ? .black : .white)
-                                }
-                                .font(.system(size: 14, weight: .semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(recentlyAdded == person.name ? yellowColor : Color.blue)
                                 )
-                                .scaleEffect(recentlyAdded == person.name ? 0.95 : 1.0)
                             }
-                            .disabled(recentlyAdded == person.name || myFriends.contains(where: { $0.name == person.name }))
+                            .frame(height: 300)
+                            
+                            // Page Indicator
+                            if numberOfPages > 1 {
+                                HStack(spacing: 8) {
+                                    ForEach(0..<numberOfPages, id: \.self) { page in
+                                        Circle()
+                                            .fill(page == currentPage ? yellowColor : Color.gray.opacity(0.3))
+                                            .frame(width: 8, height: 8)
+                                    }
+                                }
+                                .padding(.top, 10)
+                                .padding(.horizontal)
+                            }
                         }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal)
                     }
                 }
-                .padding(.top, 20)
-                
+
                 Spacer(minLength: 50)
             }
         }
         .background(backgroundColor.ignoresSafeArea())
+        .onAppear {
+            // Load friends data when view appears
+            friendsManager.setupListeners()
+        }
     }
 }
 
