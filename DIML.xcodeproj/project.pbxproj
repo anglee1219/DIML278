@@ -25,6 +25,7 @@
 		7D6537B92DE880E000C7E795 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B72DE880E000C7E795 /* Models.swift */; };
 		7D6537BA2DE880E000C7E795 /* GroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B62DE880E000C7E795 /* GroupView.swift */; };
 		7D6537BB2DE880E000C7E795 /* EntryInteractionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */; };
+		7D6537BC2DE880E100C7E795 /* EntryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B12DE880E100C7E795 /* EntryStore.swift */; };
 		7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BC2DE8815F00C7E795 /* GroupViewWrapper.swift */; };
 		7D6537C22DE884CD00C7E795 /* CreateGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BE2DE884CD00C7E795 /* CreateGroupView.swift */; };
 		7D6537C32DE884CD00C7E795 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537C02DE884CD00C7E795 /* GroupListView.swift */; };
@@ -51,11 +52,6 @@
 		EDD7AA1C2DE523B200C36E32 /* test2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1B2DE523B200C36E32 /* test2App.swift */; };
 		EDD7AA1E2DE523B200C36E32 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD7AA1D2DE523B200C36E32 /* ContentView.swift */; };
 		EDD7AA232DE523B400C36E32 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EDD7AA222DE523B400C36E32 /* Preview Assets.xcassets */; };
-		7D6537B92DE880E000C7E795 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B72DE880E000C7E795 /* Models.swift */; };
-		7D6537BA2DE880E000C7E795 /* GroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B62DE880E000C7E795 /* GroupView.swift */; };
-		7D6537BB2DE880E000C7E795 /* EntryInteractionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B52DE880E000C7E795 /* EntryInteractionView.swift */; };
-		7D6537BC2DE880E100C7E795 /* EntryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537B12DE880E100C7E795 /* EntryStore.swift */; };
-		7D6537BD2DE8816900C7E795 /* GroupViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6537BC2DE8815F00C7E795 /* GroupViewWrapper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
