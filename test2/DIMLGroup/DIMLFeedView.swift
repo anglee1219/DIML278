@@ -171,18 +171,17 @@ struct DIMLFeedView: View {
     }
     
     private func checkCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            showCamera = true
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    self.showCamera = granted
-                }
-            }
-        default:
-            showPermissionAlert = true
+        // Check if user is the influencer for this specific group
+        if !isInfluencer {
+            // User is not the influencer for this group
+            errorMessage = "Only today's influencer can take photos for this circle. You can view and react to their posts!"
+            showError = true
+            return
         }
+        
+        // User is the influencer - check if they should go to the main circle chat instead
+        errorMessage = "Go to your circle chat to snap pictures for your prompts! This is just the feed view."
+        showError = true
     }
     
     private func uploadImage(_ image: UIImage) {
@@ -204,7 +203,8 @@ struct DIMLFeedView: View {
                     image: nil, // Don't store local image since we have Firebase URL
                     imageURL: downloadURL, // Use Firebase Storage URL
                     timestamp: Date(),
-                    frameSize: capturedFrameSize
+                    frameSize: capturedFrameSize,
+                    promptType: .image // Explicitly set as image prompt
                 )
                 
                 await MainActor.run {
@@ -229,36 +229,30 @@ struct DIMLFeedView: View {
     
     private func calculateNextPromptTime() -> Date? {
         let calendar = Calendar.current
-        let intervalHours = group.promptFrequency.intervalHours
         
-        // Active day is 7 AM to 9 PM
-        let activeDayStart = 7
-        let activeDayEnd = 21
+        // Get the group's frequency settings
+        let frequency = group.promptFrequency
         
-        // Find the current prompt entry to get its upload timestamp
-        guard let currentEntry = entryStore.entries.first(where: { $0.prompt == currentPrompt }) else {
-            // If no entry found for current prompt, they haven't uploaded yet
+        // Find the most recent entry to calculate from
+        guard let mostRecentEntry = entryStore.entries.max(by: { $0.timestamp < $1.timestamp }) else {
             return nil
         }
         
-        // Calculate the next prompt time by adding the interval to the upload time
-        let uploadTime = currentEntry.timestamp
-        let nextPromptTime = calendar.date(byAdding: .hour, value: intervalHours, to: uploadTime) ?? uploadTime
-        let nextPromptHour = calendar.component(.hour, from: nextPromptTime)
+        let completionTime = mostRecentEntry.timestamp
         
-        // If the next prompt time falls within the active window (7 AM - 9 PM)
-        if nextPromptHour >= activeDayStart && nextPromptHour <= activeDayEnd {
-            return nextPromptTime
+        // Handle testing mode (1 minute intervals)
+        if frequency == .testing {
+            return calendar.date(byAdding: .minute, value: 1, to: completionTime)
         }
         
-        // If the next prompt would be outside the active window, schedule for tomorrow at 7 AM
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: uploadTime) ?? uploadTime
-        var dateComponents = calendar.dateComponents([.year, .month, .day], from: tomorrow)
-        dateComponents.hour = activeDayStart
-        dateComponents.minute = 0
-        dateComponents.second = 0
+        // For regular frequencies, use the actual interval hours from the enum
+        let intervalHours = frequency.intervalHours
         
-        return calendar.date(from: dateComponents)
+        // Calculate the next prompt time by adding the correct interval
+        let nextPromptTime = calendar.date(byAdding: .hour, value: intervalHours, to: completionTime) ?? completionTime
+        
+        // ALWAYS respect the exact frequency interval - no active hours restriction
+        return nextPromptTime
     }
     
     private func updateCountdown() {
@@ -272,14 +266,14 @@ struct DIMLFeedView: View {
             return
         }
         
-        // If hasn't completed current prompt, don't show countdown number
+        // CRITICAL: Only show countdown if current prompt is completed
         guard hasCompletedCurrentPrompt else {
             nextPromptCountdown = "Complete current prompt first"
             return
         }
         
         guard let nextPromptTime = calculateNextPromptTime() else {
-            nextPromptCountdown = ""
+            nextPromptCountdown = "Error calculating next prompt"
             return
         }
         
@@ -293,18 +287,48 @@ struct DIMLFeedView: View {
         
         let hours = Int(timeInterval) / 3600
         let minutes = Int(timeInterval) % 3600 / 60
+        let seconds = Int(timeInterval) % 60
         
-        if hours > 0 {
-            nextPromptCountdown = "\(hours)h \(minutes)m"
+        // Format countdown based on frequency
+        if group.promptFrequency == .testing {
+            // For testing mode, show precise time including seconds
+            if hours > 0 {
+                nextPromptCountdown = "\(hours)h \(minutes)m \(seconds)s"
+            } else if minutes > 0 {
+                nextPromptCountdown = "\(minutes)m \(seconds)s"
+            } else {
+                nextPromptCountdown = "\(seconds)s"
+            }
         } else {
-            nextPromptCountdown = "\(minutes)m"
+            // For regular modes, show hours and minutes only
+            if hours > 0 {
+                nextPromptCountdown = "\(hours)h \(minutes)m"
+            } else if minutes > 0 {
+                nextPromptCountdown = "\(minutes)m"
+            } else {
+                nextPromptCountdown = "Less than 1m"
+            }
         }
     }
     
     private func startCountdownTimer() {
         stopCountdownTimer()
         updateCountdown()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+        
+        // Use appropriate timer intervals based on prompt frequency
+        let timerInterval: TimeInterval
+        switch group.promptFrequency {
+        case .testing:
+            timerInterval = 1.0 // Update every second for testing mode
+        case .hourly:
+            timerInterval = 60.0 // Update every minute for hourly prompts
+        case .threeHours:
+            timerInterval = 300.0 // Update every 5 minutes for 3-hour prompts  
+        case .sixHours:
+            timerInterval = 600.0 // Update every 10 minutes for 6-hour prompts
+        }
+        
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { _ in
             updateCountdown()
         }
     }
@@ -404,6 +428,7 @@ struct DIMLFeedView: View {
                                                 .background(Color.blue.opacity(0.1))
                                                 .cornerRadius(8)
                                         }
+                                        .buttonStyle(PlainButtonStyle())
                                         .disabled(isUploading)
                                         
                                         Button(action: { 
@@ -417,6 +442,7 @@ struct DIMLFeedView: View {
                                                 .background(Color.red.opacity(0.1))
                                                 .cornerRadius(8)
                                         }
+                                        .buttonStyle(PlainButtonStyle())
                                     }
                                     .padding(.horizontal)
                                     .padding(.top, 12)

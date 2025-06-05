@@ -6,6 +6,7 @@ import FirebaseAuth
 struct BioEntryView: View {
     @StateObject private var viewModel = ProfileViewModel.shared
     @StateObject private var authManager = AuthenticationManager.shared
+    @StateObject private var tutorialManager = TutorialManager()
     @Environment(\.dismiss) private var dismiss
     @State private var showLocationSearch = false
     @State private var navigateToNext = false
@@ -13,6 +14,7 @@ struct BioEntryView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
+    @State private var shouldStartTutorial = false
     
     private func saveProfileToFirebase() {
         print("🎯 saveProfileToFirebase() called")
@@ -46,48 +48,36 @@ struct BioEntryView: View {
         
         print("✅ Profile data - username: \(username), name: \(name), zodiac: \(zodiacSign)")
         
-        // Update ProfileViewModel with the username
-        viewModel.username = username
-        viewModel.name = name
-        
-        // Save current profile data to UserDefaults
-        UserDefaults.standard.set(viewModel.location, forKey: "profile_location")
-        UserDefaults.standard.set(viewModel.school, forKey: "profile_school")
-        UserDefaults.standard.set(viewModel.interests, forKey: "profile_interests")
-        
-        // Create profile data dictionary
-        var profileData: [String: Any] = [
-            "uid": currentUser.uid,
-            "email": email,
+        // Create profile data for Firestore
+        let profileData: [String: Any] = [
             "username": username,
             "name": name,
             "location": viewModel.location,
             "school": viewModel.school,
             "interests": viewModel.interests,
             "zodiacSign": zodiacSign,
+            "pronouns": UserDefaults.standard.string(forKey: "profile_pronouns") ?? "",
             "birthday": UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date(),
-            "createdAt": FieldValue.serverTimestamp(),
+            "profileImageURL": UserDefaults.standard.string(forKey: "profile_image_url_\(currentUser.uid)") ?? "",
+            "showLocation": true,
+            "showSchool": true,
+            "profileCompleted": true,
             "lastUpdated": FieldValue.serverTimestamp(),
-            "profileCompleted": true
+            "isFirstTimeUser": true  // Flag for tutorial
         ]
         
-        // Add profile image URL if it exists
-        if let imageURL = UserDefaults.standard.string(forKey: "profile_image_url_\(currentUser.uid)") {
-            profileData["profileImageURL"] = imageURL
-        }
+        print("🔥 About to save profile data to Firestore: \(profileData)")
         
-        print("🔥 About to save profile data to Firestore...")
-        
-        // Save to Firestore using setData with merge
         let db = Firestore.firestore()
-        let strongSelf = self // Capture self strongly since we're in a value type
-        db.collection("users").document(currentUser.uid).setData(profileData, merge: true) { error in
+        
+        // Save to Firestore
+        db.collection("users").document(currentUser.uid).setData(profileData, merge: true) { error in            
             if let error = error {
                 print("❌ Firestore save error: \(error.localizedDescription)")
                 DispatchQueue.main.async {
-                    strongSelf.alertMessage = error.localizedDescription
-                    strongSelf.showAlert = true
-                    strongSelf.isLoading = false
+                    self.alertMessage = error.localizedDescription
+                    self.showAlert = true
+                    self.isLoading = false
                 }
                 return
             }
@@ -96,7 +86,7 @@ struct BioEntryView: View {
             
             // Complete the sign up process
             print("🔥 About to call completeSignUp...")
-            strongSelf.authManager.completeSignUp { result in
+            self.authManager.completeSignUp { result in
                 print("🔥 completeSignUp callback called")
                 DispatchQueue.main.async {
                     switch result {
@@ -104,19 +94,25 @@ struct BioEntryView: View {
                         print("✅ Successfully completed sign up")
                         print("🔥 Setting isLoading = false, isCompletingProfile = false, isAuthenticated = true")
                         // First set loading to false
-                        strongSelf.isLoading = false
+                        self.isLoading = false
+                        
+                        // Check if user should see tutorial
+                        if self.tutorialManager.shouldShowTutorial(for: "onboarding") {
+                            self.shouldStartTutorial = true
+                        }
+                        
                         // Then update auth state - let the main app handle navigation
                         withAnimation {
-                            strongSelf.authManager.isCompletingProfile = false
-                            strongSelf.authManager.isAuthenticated = true
+                            self.authManager.isCompletingProfile = false
+                            self.authManager.isAuthenticated = true
                         }
-                        print("🔥 Auth state updated - isCompletingProfile: \(strongSelf.authManager.isCompletingProfile), isAuthenticated: \(strongSelf.authManager.isAuthenticated)")
+                        print("🔥 Auth state updated - isCompletingProfile: \(self.authManager.isCompletingProfile), isAuthenticated: \(self.authManager.isAuthenticated)")
                         
                     case .failure(let error):
                         print("❌ Failed to complete sign up: \(error.localizedDescription)")
-                        strongSelf.alertMessage = error.localizedDescription
-                        strongSelf.showAlert = true
-                        strongSelf.isLoading = false
+                        self.alertMessage = error.localizedDescription
+                        self.showAlert = true
+                        self.isLoading = false
                     }
                 }
             }
@@ -219,10 +215,22 @@ struct BioEntryView: View {
                 LocationSearchView(selectedLocation: $viewModel.location)
             }
         }
-        .alert("Error", isPresented: $showAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(alertMessage)
+        .alert(isPresented: $showAlert) {
+            Alert(
+                title: Text("Error"),
+                message: Text(alertMessage),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .tutorialOverlay(tutorialManager: tutorialManager, tutorialID: "onboarding")
+        .onChange(of: shouldStartTutorial) { shouldStart in
+            if shouldStart {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    let steps = TutorialManager.createOnboardingTutorial()
+                    tutorialManager.startTutorial(steps: steps)
+                    shouldStartTutorial = false
+                }
+            }
         }
         .navigationBarBackButtonHidden(true)
     }

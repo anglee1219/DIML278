@@ -64,18 +64,8 @@ struct GroupListView: View {
     }
     
     private func checkCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            showCamera = true
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    self.showCamera = granted
-                }
-            }
-        default:
-            showPermissionAlert = true
-        }
+        // Show helpful message directing users to their active circles
+        showPermissionAlert = true
     }
     
     // Add function to get dynamic status for each group
@@ -175,13 +165,21 @@ struct GroupListView: View {
     
     private func calculateNextPromptTime(for group: Group, lastEntry: DIMLEntry) -> Date {
         let calendar = Calendar.current
-        let intervalMinutes = group.promptFrequency.intervalMinutes
+        let frequency = group.promptFrequency
         
-        if group.promptFrequency == .testing {
+        // Handle testing mode (1 minute intervals)
+        if frequency == .testing {
             return calendar.date(byAdding: .minute, value: 1, to: lastEntry.timestamp) ?? lastEntry.timestamp
-        } else {
-            return calendar.date(byAdding: .minute, value: intervalMinutes, to: lastEntry.timestamp) ?? lastEntry.timestamp
         }
+        
+        // For regular frequencies, use the actual interval hours from the enum
+        let intervalHours = frequency.intervalHours
+        
+        // Calculate the next prompt time by adding the correct interval
+        let nextPromptTime = calendar.date(byAdding: .hour, value: intervalHours, to: lastEntry.timestamp) ?? lastEntry.timestamp
+        
+        // ALWAYS respect the exact frequency interval - no active hours restriction
+        return nextPromptTime
     }
     
     struct AnimatedMoonView: View {
@@ -421,14 +419,9 @@ struct GroupListView: View {
             }
             .alert(isPresented: $showPermissionAlert) {
                 Alert(
-                    title: Text("Camera Access Required"),
-                    message: Text("Please enable camera access in Settings to take photos."),
-                    primaryButton: .default(Text("Settings"), action: {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    }),
-                    secondaryButton: .cancel()
+                    title: Text("📱 Camera for DIML"),
+                    message: Text("To take photos for your prompts, enter one of your circles! Only today's influencer can snap pictures for their group."),
+                    dismissButton: .default(Text("Got it!"))
                 )
             }
             .scrollDismissesKeyboard(.immediately)
@@ -606,16 +599,61 @@ struct GroupRowContent: View {
         )
         .onTapGesture {
             print("🔴 DEBUG: Tap detected for group: \(group.name) - navigating")
-            navigateToGroup = true
-        }
-        .background(
-            NavigationLink(
-                destination: GroupDetailViewWrapper(groupId: group.id, groupStore: groupStore),
-                isActive: $navigateToGroup
-            ) {
-                EmptyView()
+            
+            // Add authentication check before navigation
+            if let currentUser = Auth.auth().currentUser {
+                print("🔴 DEBUG: User authenticated: \(currentUser.uid)")
+                print("🔴 DEBUG: User email: \(currentUser.email ?? "no email")")
+                navigateToGroup = true
+            } else {
+                print("🔴 DEBUG: ❌ USER NOT AUTHENTICATED - Cannot navigate to group")
+                print("🔴 DEBUG: This might be why navigation isn't working on the other device")
+                // Force authentication check
+                Auth.auth().signInAnonymously { result, error in
+                    if let error = error {
+                        print("🔴 DEBUG: Auth error: \(error.localizedDescription)")
+                    } else if let user = result?.user {
+                        print("🔴 DEBUG: Anonymous auth successful: \(user.uid)")
+                        DispatchQueue.main.async {
+                            navigateToGroup = true
+                        }
+                    }
+                }
             }
-            .hidden()
+        }
+        .buttonStyle(PlainButtonStyle()) // Prevent grey background on tap
+        .contentShape(Rectangle()) // Ensure entire area is tappable
+        .simultaneousGesture(
+            TapGesture()
+                .onEnded { _ in
+                    // Additional tap handling for iOS 18.5 compatibility
+                    print("🔴 DEBUG: Simultaneous gesture tap for group: \(group.name)")
+                    if !navigateToGroup {
+                        navigateToGroup = true
+                    }
+                }
+        )
+        .background(
+            // iOS version-specific navigation handling
+            ZStack {
+                if #available(iOS 16.0, *) {
+                    NavigationLink(
+                        destination: GroupDetailViewWrapper(groupId: group.id, groupStore: groupStore),
+                        isActive: $navigateToGroup
+                    ) {
+                        EmptyView()
+                    }
+                    .opacity(0)
+                } else {
+                    NavigationLink(
+                        destination: GroupDetailViewWrapper(groupId: group.id, groupStore: groupStore),
+                        isActive: $navigateToGroup
+                    ) {
+                        EmptyView()
+                    }
+                    .hidden()
+                }
+            }
         )
     }
 }

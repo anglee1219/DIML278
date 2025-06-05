@@ -2,17 +2,26 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 import AVFoundation
+import FirebaseStorage
 
 // MARK: - Reaction Button Component
 struct ReactionButton: View {
     let entryId: String
     @ObservedObject var entryStore: EntryStore
+    let groupMembers: [User]?
+    
     @State private var showReactionMenu = false
     @State private var showImagePicker = false
     @State private var showComments = false
     @State private var showWhoReacted = false
     @State private var selectedImage: UIImage?
     @State private var showCameraPermissionAlert = false
+    
+    init(entryId: String, entryStore: EntryStore, groupMembers: [User]? = nil) {
+        self.entryId = entryId
+        self.entryStore = entryStore
+        self.groupMembers = groupMembers
+    }
     
     private var entry: DIMLEntry? {
         entryStore.entries.first { $0.id == entryId }
@@ -91,7 +100,7 @@ struct ReactionButton: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                         ForEach(reactions, id: \.self) { emoji in
                             Button(action: {
-                                // Prevent reacting to own posts
+                                // Prevent reacting to own posts with emojis
                                 if isOwnPost() {
                                     return
                                 }
@@ -150,7 +159,7 @@ struct ReactionButton: View {
                     }) {
                         HStack(spacing: -8) {
                             ForEach(getReactionUsers().prefix(3), id: \.self) { userId in
-                                ProfilePictureView(userId: userId, size: 32)
+                                ProfilePictureView(userId: userId, size: 32, groupMembers: groupMembers)
                                     .overlay(
                                         Circle()
                                             .stroke(Color.white, lineWidth: 2)
@@ -174,12 +183,14 @@ struct ReactionButton: View {
                 
                 // Main reaction button
                 Button(action: {
-                    // Don't show menu for own posts
+                    // Allow viewing comments for own posts, but prevent emoji reactions
                     if isOwnPost() {
+                        // For own posts, just show comments directly
+                        showComments = true
                         return
                     }
                     
-                    // Single tap - show menu
+                    // Single tap - show menu for others' posts
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         showReactionMenu = true
                     }
@@ -192,26 +203,41 @@ struct ReactionButton: View {
                         Circle()
                             .fill(
                                 LinearGradient(
-                                    gradient: Gradient(colors: [Color.orange, Color.red]),
+                                    gradient: Gradient(colors: isOwnPost() ? [Color.blue, Color.cyan] : [Color.orange, Color.red]),
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                             .frame(width: 44, height: 44)
-                            .shadow(color: .orange.opacity(0.4), radius: 6, x: 0, y: 3)
+                            .shadow(color: isOwnPost() ? .blue.opacity(0.4) : .orange.opacity(0.4), radius: 6, x: 0, y: 3)
                         
-                        // Show most recent reaction or default icon
-                        if let mostRecentReaction = getMostRecentReaction() {
-                            Text(mostRecentReaction)
-                                .font(.system(size: 18))
-                        } else {
-                            Image(systemName: "face.smiling")
+                        // Show comment icon for own posts, reaction icon for others
+                        if isOwnPost() {
+                            Image(systemName: "message.fill")
                                 .foregroundColor(.white)
                                 .font(.system(size: 18, weight: .medium))
+                        } else {
+                            // Show most recent reaction or default icon
+                            if let mostRecentReaction = getMostRecentReaction() {
+                                Text(mostRecentReaction)
+                                    .font(.system(size: 18))
+                            } else {
+                                Image(systemName: "face.smiling")
+                                    .foregroundColor(.white)
+                                    .font(.system(size: 18, weight: .medium))
+                            }
                         }
                         
-                        // Reaction count badge
-                        if getTotalReactionCount() > 0 {
+                        // Reaction count badge (or comment count for own posts)
+                        if isOwnPost() && (entry?.comments.count ?? 0) > 0 {
+                            Text("\(entry?.comments.count ?? 0)")
+                                .font(.custom("Fredoka-Bold", size: 10))
+                                .foregroundColor(.white)
+                                .frame(width: 18, height: 18)
+                                .background(Color.blue)
+                                .clipShape(Circle())
+                                .offset(x: 15, y: -15)
+                        } else if !isOwnPost() && getTotalReactionCount() > 0 {
                             Text("\(getTotalReactionCount())")
                                 .font(.custom("Fredoka-Bold", size: 10))
                                 .foregroundColor(.white)
@@ -223,63 +249,110 @@ struct ReactionButton: View {
                     }
                 }
                 .onLongPressGesture(minimumDuration: 0.3) {
-                    // Long press - also show menu with extra haptic feedback
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
-                    impactFeedback.impactOccurred()
-                    
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        showReactionMenu = true
+                    // Long press behavior
+                    if isOwnPost() {
+                        // For own posts, also just show comments
+                        showComments = true
+                    } else {
+                        // For others' posts, show reaction menu with extra haptic feedback
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+                        impactFeedback.impactOccurred()
+                        
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showReactionMenu = true
+                        }
                     }
                 }
+            }
+            
+            // Custom overlay for reactions instead of sheet to avoid navigation conflicts
+            if showWhoReacted {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showWhoReacted = false
+                        }
+                    }
+                    .overlay(
+                        VStack(spacing: 0) {
+                            // Header
+                            HStack {
+                                Text("Reactions")
+                                    .font(.custom("Fredoka-SemiBold", size: 20))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Button("Done") {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        showWhoReacted = false
+                                    }
+                                }
+                                .font(.custom("Fredoka-Medium", size: 16))
+                                .foregroundColor(.blue)
+                            }
+                            .padding(.horizontal)
+                            .padding(.top)
+                            .padding(.bottom, 8)
+                            
+                            // Content
+                            WhoReactedView(entry: entry, groupMembers: groupMembers)
+                        }
+                        .background(Color.white)
+                        .cornerRadius(16)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 100)
+                        .transition(.scale.combined(with: .opacity))
+                    )
+            }
+            
+            // Custom overlay for comments instead of sheet to avoid navigation conflicts
+            if showComments {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showComments = false
+                        }
+                    }
+                    .overlay(
+                        VStack(spacing: 0) {
+                            // Header - Fixed at top
+                            HStack {
+                                Text("Comments")
+                                    .font(.custom("Fredoka-SemiBold", size: 20))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Button("Done") {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        showComments = false
+                                    }
+                                }
+                                .font(.custom("Fredoka-Medium", size: 16))
+                                .foregroundColor(.blue)
+                            }
+                            .padding(.horizontal)
+                            .padding(.top)
+                            .padding(.bottom, 8)
+                            .background(Color.white) // Ensure header has white background
+                            
+                            // Scrollable Content
+                            ScrollView {
+                                EntryInteractionView(entryId: entryId, entryStore: entryStore)
+                                    .padding(.bottom, 20) // Add bottom padding for better UX
+                            }
+                            .frame(maxHeight: .infinity) // Allow scroll view to expand
+                        }
+                        .background(Color.white)
+                        .cornerRadius(16)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 50)
+                        .transition(.scale.combined(with: .opacity))
+                    )
+                    .zIndex(1000) // High z-index to ensure it appears on top
             }
         }
         .sheet(isPresented: $showImagePicker) {
             ReactionImagePicker(image: $selectedImage)
-        }
-        .sheet(isPresented: $showComments) {
-            VStack {
-                HStack {
-                    Text("Comments")
-                        .font(.custom("Fredoka-SemiBold", size: 20))
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Button("Done") {
-                        showComments = false
-                    }
-                    .font(.custom("Fredoka-Medium", size: 16))
-                    .foregroundColor(.blue)
-                }
-                .padding(.horizontal)
-                .padding(.top)
-                
-                EntryInteractionView(entryId: entryId, entryStore: entryStore)
-            }
-            .apply { view in
-                if #available(iOS 16.0, *) {
-                    view.presentationDetents([.medium, .large])
-                } else {
-                    view
-                }
-            }
-        }
-        .sheet(isPresented: $showWhoReacted) {
-            VStack {
-                HStack {
-                    Text("Reactions")
-                        .font(.custom("Fredoka-SemiBold", size: 20))
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Button("Done") {
-                        showWhoReacted = false
-                    }
-                    .font(.custom("Fredoka-Medium", size: 16))
-                    .foregroundColor(.blue)
-                }
-                .padding(.horizontal)
-                .padding(.top)
-                
-                WhoReactedView(entry: entry)
-            }
         }
         .onChange(of: selectedImage) { image in
             if let image = image {
@@ -306,13 +379,24 @@ struct ReactionButton: View {
     }
     
     private func getTotalReactionCount() -> Int {
-        guard let entry = entry else { return 0 }
-        return entry.userReactions.count
+        guard let entry = entry else { 
+            print("🐛 ReactionButton: No entry found")
+            return 0 
+        }
+        let count = entry.userReactions.count
+        print("🐛 ReactionButton: Total reaction count for entry \(entry.id): \(count)")
+        if count > 0 {
+            print("🐛 ReactionButton: Reactions are:")
+            for reaction in entry.userReactions {
+                print("🐛    - \(reaction.emoji) by \(reaction.userId)")
+            }
+        }
+        return count
     }
     
     private func getReactionUsers() -> [String] {
         guard let entry = entry else { return [] }
-        return entry.getUsersWhoReacted()
+        return Array(Set(entry.userReactions.map { $0.userId }))
     }
     
     private func handlePictureReaction(_ image: UIImage) {
@@ -401,6 +485,12 @@ struct ReactionButton: View {
 // MARK: - Who Reacted View
 struct WhoReactedView: View {
     let entry: DIMLEntry?
+    let groupMembers: [User]?
+    
+    init(entry: DIMLEntry?, groupMembers: [User]? = nil) {
+        self.entry = entry
+        self.groupMembers = groupMembers
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -408,7 +498,7 @@ struct WhoReactedView: View {
                 List {
                     ForEach(entry.userReactions.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { reaction in
                         HStack(spacing: 12) {
-                            ProfilePictureView(userId: reaction.userId, size: 40)
+                            ProfilePictureView(userId: reaction.userId, size: 40, groupMembers: groupMembers)
                             
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(getUserName(for: reaction.userId))
@@ -454,8 +544,19 @@ struct WhoReactedView: View {
         let currentUserId = Auth.auth().currentUser?.uid ?? ""
         let currentUserName = SharedProfileViewModel.shared.name
         
+        // First, check if this is the current user
+        if userId == currentUserId {
+            return currentUserName
+        }
+        
+        // Then, check group members for real user data
+        if let groupMembers = groupMembers,
+           let member = groupMembers.first(where: { $0.id == userId }) {
+            return member.name
+        }
+        
+        // Fallback to mock users for compatibility
         let mockUsers: [String: String] = [
-            currentUserId: currentUserName,
             "user_0": "Emma",
             "user_1": "Liam", 
             "user_2": "Olivia",
@@ -463,7 +564,8 @@ struct WhoReactedView: View {
             "user_4": "Ava",
             "user_5": "Sophia"
         ]
-        return mockUsers[userId] ?? "User"
+        
+        return mockUsers[userId] ?? "Unknown User"
     }
     
     private func getUserUsername(for userId: String) -> String {
@@ -478,9 +580,20 @@ struct ProfilePictureView: View {
     let size: CGFloat
     @State private var profileImage: UIImage?
     @State private var userName: String?
+    let groupMembers: [User]?
+    
+    init(userId: String, size: CGFloat, groupMembers: [User]? = nil) {
+        self.userId = userId
+        self.size = size
+        self.groupMembers = groupMembers
+    }
     
     var body: some View {
-        SwiftUI.Group {
+        ZStack {
+            Circle()
+                .fill(getPlaceholderColor(for: userId))
+                .frame(width: size, height: size)
+            
             if let profileImage = profileImage {
                 Image(uiImage: profileImage)
                     .resizable()
@@ -488,147 +601,79 @@ struct ProfilePictureView: View {
                     .frame(width: size, height: size)
                     .clipShape(Circle())
             } else {
-                // Show a more realistic profile picture placeholder
-                ZStack {
-                    Circle()
-                        .fill(getPlaceholderColor(for: userId))
-                        .frame(width: size, height: size)
-                    
-                    // Use SF Symbols for more realistic profile pictures
-                    Image(systemName: getProfileIcon(for: userId))
-                        .font(.system(size: size * 0.5, weight: .medium))
-                        .foregroundColor(.white)
-                }
+                Text(getInitials())
+                    .font(.custom("Fredoka-Medium", size: size * 0.4))
+                    .foregroundColor(.white)
             }
         }
         .onAppear {
-            loadUserProfile()
+            loadUserData()
         }
     }
     
-    private func loadUserProfile() {
-        userName = getUserName(for: userId)
-        loadMockProfilePicture()
-    }
-    
-    private func loadMockProfilePicture() {
-        // Create a more realistic mock profile picture
-        let mockProfilePictures = getMockProfilePictures()
-        
-        if let mockImage = mockProfilePictures[userId] {
-            self.profileImage = mockImage
-        } else {
-            // For unknown users, create a generated profile picture
-            self.profileImage = generateProfilePicture(for: userId)
-        }
-    }
-    
-    private func getMockProfilePictures() -> [String: UIImage] {
-        var mockImages: [String: UIImage] = [:]
-        
-        // For the current user, try to create a personalized image
-        if let currentUserId = Auth.auth().currentUser?.uid {
-            mockImages[currentUserId] = generateProfilePicture(for: currentUserId, isCurrentUser: true)
-        }
-        
-        // For mock users, create distinct profile pictures
-        let mockUserIds = ["user_0", "user_1", "user_2", "user_3", "user_4", "user_5"]
-        for (index, userId) in mockUserIds.enumerated() {
-            mockImages[userId] = generateProfilePicture(for: userId, index: index)
-        }
-        
-        return mockImages
-    }
-    
-    private func generateProfilePicture(for userId: String, isCurrentUser: Bool = false, index: Int = 0) -> UIImage {
-        let size = CGSize(width: 100, height: 100)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            let cgContext = context.cgContext
-            
-            // Create gradient background
-            let colors = getGradientColors(for: userId, index: index)
-            let colorSpace = CGColorSpaceCreateDeviceRGB()
-            let gradient = CGGradient(colorsSpace: colorSpace, colors: [colors.0.cgColor, colors.1.cgColor] as CFArray, locations: [0.0, 1.0])!
-            
-            cgContext.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: size.width, y: size.height), options: [])
-            
-            // Add user initials
-            let initials = getInitials(for: userId)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 40, weight: .semibold),
-                .foregroundColor: UIColor.white
-            ]
-            
-            let attributedString = NSAttributedString(string: initials, attributes: attributes)
-            let textSize = attributedString.size()
-            let textRect = CGRect(
-                x: (size.width - textSize.width) / 2,
-                y: (size.height - textSize.height) / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            
-            attributedString.draw(in: textRect)
-            
-            // Add a subtle border
-            cgContext.setStrokeColor(UIColor.white.withAlphaComponent(0.3).cgColor)
-            cgContext.setLineWidth(2)
-            cgContext.strokeEllipse(in: CGRect(origin: .zero, size: size))
-        }
-    }
-    
-    private func getGradientColors(for userId: String, index: Int) -> (UIColor, UIColor) {
-        let gradients: [(UIColor, UIColor)] = [
-            (UIColor.systemBlue, UIColor.systemCyan),
-            (UIColor.systemPurple, UIColor.systemPink),
-            (UIColor.systemOrange, UIColor.systemRed),
-            (UIColor.systemGreen, UIColor.systemTeal),
-            (UIColor.systemIndigo, UIColor.systemBlue),
-            (UIColor.systemPink, UIColor.systemPurple),
-            (UIColor.systemRed, UIColor.systemOrange),
-            (UIColor.systemTeal, UIColor.systemGreen)
-        ]
-        
-        let colorIndex = abs(userId.hashValue + index) % gradients.count
-        return gradients[colorIndex]
-    }
-    
-    private func getUserName(for userId: String) -> String {
-        // Mock user names - in a real implementation, fetch from Firestore
+    private func loadUserData() {
+        // Get user name using the same logic as WhoReactedView
         let currentUserId = Auth.auth().currentUser?.uid ?? ""
         let currentUserName = SharedProfileViewModel.shared.name
         
-        let mockUsers: [String: String] = [
-            currentUserId: currentUserName,
-            "user_0": "Emma",
-            "user_1": "Liam", 
-            "user_2": "Olivia",
-            "user_3": "Noah",
-            "user_4": "Ava",
-            "user_5": "Sophia"
-        ]
-        return mockUsers[userId] ?? "User"
+        if userId == currentUserId {
+            userName = currentUserName
+        } else if let groupMembers = groupMembers,
+                  let member = groupMembers.first(where: { $0.id == userId }) {
+            userName = member.name
+        } else {
+            // Fallback to mock users
+            let mockUsers: [String: String] = [
+                "user_0": "Emma",
+                "user_1": "Liam", 
+                "user_2": "Olivia",
+                "user_3": "Noah",
+                "user_4": "Ava",
+                "user_5": "Sophia"
+            ]
+            userName = mockUsers[userId] ?? "Unknown User"
+        }
+        
+        // Try to load profile image
+        loadProfileImage()
+    }
+    
+    private func loadProfileImage() {
+        Task {
+            do {
+                let storage = Storage.storage()
+                let storageRef = storage.reference()
+                let imagePath = "profile_images/\(userId).jpg"
+                let imageRef = storageRef.child(imagePath)
+                
+                // Download image data from Firebase Storage
+                let imageData = try await imageRef.data(maxSize: 10 * 1024 * 1024) // 10MB max
+                
+                await MainActor.run {
+                    self.profileImage = UIImage(data: imageData)
+                }
+            } catch {
+                print("Failed to load profile image for user \(userId): \(error)")
+            }
+        }
+    }
+    
+    private func getInitials() -> String {
+        guard let name = userName else { return "?" }
+        let components = name.split(separator: " ")
+        if components.count >= 2 {
+            return String(components[0].prefix(1) + components[1].prefix(1)).uppercased()
+        } else {
+            return String(name.prefix(1)).uppercased()
+        }
     }
     
     private func getPlaceholderColor(for userId: String) -> Color {
-        let colors: [Color] = [.blue, .green, .orange, .purple, .pink, .cyan, .red, .indigo]
-        let index = abs(userId.hashValue) % colors.count
-        return colors[index]
-    }
-    
-    private func getProfileIcon(for userId: String) -> String {
-        let icons = ["person.fill", "person.crop.circle.fill", "face.smiling.fill", "person.circle.fill"]
-        let index = abs(userId.hashValue) % icons.count
-        return icons[index]
-    }
-    
-    private func getInitials(for userId: String) -> String {
-        let name = getUserName(for: userId)
-        let components = name.components(separatedBy: " ")
-        let initials = components.compactMap { $0.first }.map { String($0) }.joined()
-        return String(initials.prefix(2)).uppercased()
+        let colors: [Color] = [
+            .blue, .green, .orange, .purple, .pink, .red, .teal, .indigo
+        ]
+        let hash = abs(userId.hashValue)
+        return colors[hash % colors.count]
     }
 }
 

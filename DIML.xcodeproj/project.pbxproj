@@ -39,6 +39,7 @@
 		ED432CB62DEEAFD200A98660 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED432CB42DEEAFD200A98660 /* User.swift */; };
 		ED432D342DEFC77F00A98660 /* StorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED432D332DEFC77F00A98660 /* StorageManager.swift */; };
 		ED6680972DE999A2004E63A8 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6680962DE9999A004E63A8 /* MainTabView.swift */; };
+		ED888ECE2DF2239F008CCAC5 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = ED888ECD2DF2239F008CCAC5 /* FirebaseMessaging */; };
 		ED98B0742DEAA45B00072A68 /* AddFriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B0732DEAA44F00072A68 /* AddFriendsView.swift */; };
 		ED98B07D2DEAD54700072A68 /* TopNavBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B07C2DEAD54300072A68 /* TopNavBar.swift */; };
 		ED98B0932DEB9E4D00072A68 /* GroupSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED98B0922DEB9E4500072A68 /* GroupSettingsView.swift */; };
@@ -78,7 +79,7 @@
 		ED98B0922DEB9E4500072A68 /* GroupSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupSettingsView.swift; sourceTree = "<group>"; };
 		EDB227412DED5DD0000DD9AA /* GroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupStore.swift; sourceTree = "<group>"; };
 		EDB227B22DEDB624000DD9AA /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
-		EDD7AA182DE523B200C36E32 /* test2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = test2.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EDD7AA182DE523B200C36E32 /* DIML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DIML.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDD7AA1B2DE523B200C36E32 /* test2App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = test2App.swift; sourceTree = "<group>"; };
 		EDD7AA1D2DE523B200C36E32 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		EDD7AA222DE523B400C36E32 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
@@ -108,6 +109,7 @@
 				7D5B415B2DF02605006A6528 /* FirebaseAI in Frameworks */,
 				7D5B41652DF026E0006A6528 /* FirebaseAuth in Frameworks */,
 				ED432C552DEE429900A98660 /* FirebaseStorage in Frameworks */,
+				ED888ECE2DF2239F008CCAC5 /* FirebaseMessaging in Frameworks */,
 				EDB227BA2DEDB6D0000DD9AA /* FirebaseAnalyticsOnDeviceConversion in Frameworks */,
 				EDB227B62DEDB6D0000DD9AA /* FirebaseAI in Frameworks */,
 				7D5B41612DF02605006A6528 /* FirebaseAnalyticsWithoutAdIdSupport in Frameworks */,
@@ -187,7 +189,7 @@
 		EDD7AA192DE523B200C36E32 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				EDD7AA182DE523B200C36E32 /* test2.app */,
+				EDD7AA182DE523B200C36E32 /* DIML.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -225,9 +227,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		EDD7AA172DE523B200C36E32 /* test2 */ = {
+		EDD7AA172DE523B200C36E32 /* DIML */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = EDD7AA262DE523B400C36E32 /* Build configuration list for PBXNativeTarget "test2" */;
+			buildConfigurationList = EDD7AA262DE523B400C36E32 /* Build configuration list for PBXNativeTarget "DIML" */;
 			buildPhases = (
 				EDD7AA142DE523B200C36E32 /* Sources */,
 				EDD7AA152DE523B200C36E32 /* Frameworks */,
@@ -242,9 +244,9 @@
 				ED98B0802DEAE2C800072A68 /* CreateAcctScreens */,
 				EDCD70292DE96EC80000175E /* Resources */,
 			);
-			name = test2;
+			name = DIML;
 			productName = test2;
-			productReference = EDD7AA182DE523B200C36E32 /* test2.app */;
+			productReference = EDD7AA182DE523B200C36E32 /* DIML.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -262,7 +264,7 @@
 					};
 				};
 			};
-			buildConfigurationList = EDD7AA132DE523B200C36E32 /* Build configuration list for PBXProject "test2" */;
+			buildConfigurationList = EDD7AA132DE523B200C36E32 /* Build configuration list for PBXProject "DIML" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -278,7 +280,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				EDD7AA172DE523B200C36E32 /* test2 */,
+				EDD7AA172DE523B200C36E32 /* DIML */,
 			);
 		};
 /* End PBXProject section */
@@ -511,7 +513,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		EDD7AA132DE523B200C36E32 /* Build configuration list for PBXProject "test2" */ = {
+		EDD7AA132DE523B200C36E32 /* Build configuration list for PBXProject "DIML" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				EDD7AA242DE523B400C36E32 /* Debug */,
@@ -520,7 +522,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		EDD7AA262DE523B400C36E32 /* Build configuration list for PBXNativeTarget "test2" */ = {
+		EDD7AA262DE523B400C36E32 /* Build configuration list for PBXNativeTarget "DIML" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				EDD7AA272DE523B400C36E32 /* Debug */,
@@ -612,6 +614,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = EDB227B42DEDB6D0000DD9AA /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		ED888ECD2DF2239F008CCAC5 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EDB227B42DEDB6D0000DD9AA /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
 		};
 		EDB227B52DEDB6D0000DD9AA /* FirebaseAI */ = {
 			isa = XCSwiftPackageProductDependency;

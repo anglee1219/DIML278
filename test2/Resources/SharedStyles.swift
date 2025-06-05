@@ -34,4 +34,24 @@ public struct RequirementText: View {
                 .foregroundColor(isPassed ? Color(red: 0.455, green: 0.506, blue: 0.267) : .gray)
         }
     }
+}
+
+// MARK: - iOS 18.5 Compatible Button Style
+public struct iOS18CompatibleButtonStyle: ButtonStyle {
+    public init() {}
+    
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Color.clear) // Explicit clear background
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Extension for easy button styling
+public extension Button {
+    func iOS18Compatible() -> some View {
+        self.buttonStyle(iOS18CompatibleButtonStyle())
+    }
 } 

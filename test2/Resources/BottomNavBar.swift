@@ -21,11 +21,12 @@ struct BottomNavBar: View {
                 Button(action: {
                     currentTab = .home
                 }) {
-                    Image(systemName: "house.fill")
+                    Image(systemName: "house")
                         .resizable()
                         .frame(width: 28, height: 28)
                         .foregroundColor(currentTab == .home ? .black : .gray)
                 }
+                .buttonStyle(PlainButtonStyle())
 
                 Spacer()
 
@@ -35,15 +36,15 @@ struct BottomNavBar: View {
                 }) {
                     ZStack {
                     Circle()
-                            .stroke((isInfluencer || shouldBounceCamera) ? Color.yellow : Color.gray, lineWidth: 2)
+                            .stroke(shouldBounceCamera ? Color.yellow : Color.gray.opacity(0.5), lineWidth: 2)
                         .frame(width: 50, height: 50)
                         
                             Image(systemName: "camera")
-                            .foregroundColor((isInfluencer || shouldBounceCamera) ? .yellow : .gray)
+                            .foregroundColor(shouldBounceCamera ? .yellow : .gray.opacity(0.7))
                     }
                     .offset(y: bounceOffset)
                     .animation(
-                        (isInfluencer || shouldBounceCamera) ?
+                        shouldBounceCamera ?
                             Animation
                                 .easeInOut(duration: 0.6)
                                 .repeatForever(autoreverses: true) :
@@ -51,16 +52,17 @@ struct BottomNavBar: View {
                         value: bounceOffset
                     )
                 }
+                .buttonStyle(PlainButtonStyle())
                 .onAppear {
-                    if isInfluencer || shouldBounceCamera {
+                    if shouldBounceCamera {
                         bounceOffset = -15
                     }
                 }
                 .onChange(of: isInfluencer) { newValue in
-                    bounceOffset = (newValue || shouldBounceCamera) ? -15 : 0
+                    bounceOffset = shouldBounceCamera ? -15 : 0
                 }
                 .onChange(of: shouldBounceCamera) { newValue in
-                    bounceOffset = (newValue || isInfluencer) ? -15 : 0
+                    bounceOffset = newValue ? -15 : 0
                 }
 
                 Spacer()
@@ -74,6 +76,7 @@ struct BottomNavBar: View {
                         .frame(width: 28, height: 28)
                         .foregroundColor(currentTab == .profile ? .black : .gray)
                 }
+                .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, 50)
             .padding(.vertical, 16)

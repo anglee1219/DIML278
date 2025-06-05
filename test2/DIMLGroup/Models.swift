@@ -280,7 +280,13 @@ struct UserReaction: Identifiable, Codable, Equatable {
     }
 }
 
-struct DIMLEntry: Identifiable, Equatable {
+// MARK: - Prompt Type Enum
+enum PromptType: String, Codable {
+    case image = "image"
+    case text = "text"
+}
+
+struct DIMLEntry: Identifiable, Equatable, Codable {
     let id: String
     let userId: String
     let prompt: String
@@ -292,6 +298,12 @@ struct DIMLEntry: Identifiable, Equatable {
     var reactions: [String: Int] // Legacy - keeping for backwards compatibility
     var userReactions: [UserReaction] // New - individual user reactions
     let frameSize: FrameSize
+    let promptType: PromptType // NEW: Store the actual prompt type
+    
+    // Custom coding keys to exclude UIImage from encoding/decoding
+    private enum CodingKeys: String, CodingKey {
+        case id, userId, prompt, response, imageURL, timestamp, comments, reactions, userReactions, frameSize, promptType
+    }
     
     init(id: String = UUID().uuidString, 
          userId: String, 
@@ -303,7 +315,8 @@ struct DIMLEntry: Identifiable, Equatable {
          comments: [Comment] = [], 
          reactions: [String: Int] = [:], 
          userReactions: [UserReaction] = [],
-         frameSize: FrameSize? = nil) {
+         frameSize: FrameSize? = nil,
+         promptType: PromptType = .image) {
         self.id = id
         self.userId = userId
         self.prompt = prompt
@@ -315,6 +328,50 @@ struct DIMLEntry: Identifiable, Equatable {
         self.reactions = reactions
         self.userReactions = userReactions
         self.frameSize = frameSize ?? FrameSize.random
+        self.promptType = promptType
+    }
+    
+    // Custom decoder - UIImage will be nil when decoded
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        userId = try container.decode(String.self, forKey: .userId)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        response = try container.decode(String.self, forKey: .response)
+        image = nil // UIImage cannot be decoded, will be nil
+        imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
+        
+        // Handle Firestore Timestamp format
+        if let firestoreTimestamp = try? container.decode(Timestamp.self, forKey: .timestamp) {
+            timestamp = firestoreTimestamp.dateValue()
+        } else if let date = try? container.decode(Date.self, forKey: .timestamp) {
+            timestamp = date
+        } else {
+            timestamp = Date() // Fallback
+        }
+        
+        // Handle comments with optional fields
+        comments = (try? container.decode([Comment].self, forKey: .comments)) ?? []
+        reactions = (try? container.decode([String: Int].self, forKey: .reactions)) ?? [:]
+        userReactions = (try? container.decode([UserReaction].self, forKey: .userReactions)) ?? []
+        frameSize = (try? container.decode(FrameSize.self, forKey: .frameSize)) ?? .medium
+        promptType = (try? container.decode(PromptType.self, forKey: .promptType)) ?? .image
+    }
+    
+    // Custom encoder - UIImage will not be encoded
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(userId, forKey: .userId)
+        try container.encode(prompt, forKey: .prompt)
+        try container.encode(response, forKey: .response)
+        try container.encodeIfPresent(imageURL, forKey: .imageURL)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(comments, forKey: .comments)
+        try container.encode(reactions, forKey: .reactions)
+        try container.encode(userReactions, forKey: .userReactions)
+        try container.encode(frameSize, forKey: .frameSize)
+        try container.encode(promptType, forKey: .promptType)
     }
     
     // Helper methods for new reaction system
@@ -345,7 +402,8 @@ struct DIMLEntry: Identifiable, Equatable {
                lhs.comments == rhs.comments &&
                lhs.reactions == rhs.reactions &&
                lhs.userReactions == rhs.userReactions &&
-               lhs.frameSize == rhs.frameSize
+               lhs.frameSize == rhs.frameSize &&
+               lhs.promptType == rhs.promptType
         // Note: We don't compare UIImage since it's not Equatable
     }
 }

@@ -4,6 +4,8 @@ import FirebaseAuth
 import FirebaseStorage
 import Foundation
 import UserNotifications
+import FirebaseFirestore
+import FirebaseMessaging
 
 // Seeded random number generator for consistent daily prompts
 struct SeededRandomNumberGenerator: RandomNumberGenerator {
@@ -79,6 +81,8 @@ struct GroupDetailView: View {
     @State private var showPromptCompletedFeedback = false // NEW: Show when prompt is completed
     @State private var showNewPromptUnlockedFeedback = false // NEW: Show when new prompt unlocks
     @State private var hasNewPromptReadyForAnimation = false // NEW: Flag for delayed animation trigger
+    @State private var isRefreshing = false // NEW: Show refresh indicator
+    @State private var isActivelyViewingChat = false // NEW: Track if user is actively in this chat view
     
     private let promptManager = PromptManager.shared
     private let storage = StorageManager.shared
@@ -189,7 +193,7 @@ struct GroupDetailView: View {
             return false
         }
         
-        // If current prompt is completed, check if enough time has passed for next prompt
+        // If current prompt is completed, check if enough time has passed for next prompt based on group frequency
         guard let nextPromptTime = calculateNextPromptTime() else {
             print("🕐 shouldShowNextPrompt: No next prompt time calculated")
             return false
@@ -200,6 +204,7 @@ struct GroupDetailView: View {
         let shouldShow = timeRemaining <= 0
         
         print("🕐 shouldShowNextPrompt: timeRemaining=\(timeRemaining), shouldShow=\(shouldShow)")
+        print("🕐 shouldShowNextPrompt: Using group frequency \(group.promptFrequency)")
         
         return shouldShow
     }
@@ -385,6 +390,62 @@ struct GroupDetailView: View {
         }
     }
     
+    // NEW: Create configuration for a specific prompt text (preserves prompt consistency)
+    private func createPromptConfiguration(for promptText: String) -> PromptConfiguration {
+        let completedCount = store.entries.count
+        let isEvenPrompt = completedCount % 2 == 0
+        
+        // Determine if this should be an image prompt or text prompt (alternating)
+        if isEvenPrompt {
+            // IMAGE PROMPT: Clean card with no input fields
+            return PromptConfiguration(
+                prompt: promptText,
+                fields: [],
+                backgroundColor: "blue", // Main blue
+                dateLabel: completedCount == 0 ? getCurrentDateLabel() : nil
+            )
+        } else {
+            // TEXT-BASED PROMPT: Determine type based on completed count
+            let textPromptType = completedCount % 3 // Cycle through 3 types
+            
+            if textPromptType == 1 {
+                // Type 1: Simple text prompt with input field
+                return PromptConfiguration(
+                    prompt: promptText,
+                    fields: [
+                        PromptField(title: "", placeholder: "Tell us about it...", type: .text, isRequired: false)
+                    ],
+                    backgroundColor: "cream" // Main yellow (low opacity)
+                )
+                
+            } else if textPromptType == 2 {
+                // Type 2: Date + Location bubble cards
+                return PromptConfiguration(
+                    prompt: promptText,
+                    fields: [
+                        PromptField(title: "current mood", placeholder: "how are you feeling?", type: .text),
+                        PromptField(title: "what's happening", placeholder: "tell us more...", type: .text)
+                    ],
+                    backgroundColor: "green", // Grey (very low opacity)
+                    dateLabel: getCurrentDateLabel(),
+                    locationLabel: "tell us wya? 👀"
+                )
+                
+            } else {
+                // Type 3: Energy/mood selection cards
+                return PromptConfiguration(
+                    prompt: promptText,
+                    fields: [
+                        PromptField(title: "How's your energy?", placeholder: "Select your energy level", type: .mood),
+                        PromptField(title: "Share more", placeholder: "tell us more...", type: .text, isRequired: false)
+                    ],
+                    backgroundColor: "pink", // Main yellow (medium opacity)
+                    dateLabel: getCurrentDateLabel()
+                )
+            }
+        }
+    }
+    
     private func getCurrentDateLabel() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
@@ -484,11 +545,22 @@ struct GroupDetailView: View {
         
         Task {
             do {
-                let imagePath = "diml_images/\(UUID().uuidString).jpg"
-                print("🔥 Uploading to Firebase Storage path: \(imagePath)")
-                let downloadURL = try await storage.uploadImage(image, path: imagePath)
-                print("🔥 Firebase Storage upload successful!")
-                print("🔥 Download URL: \(downloadURL)")
+                // Add timeout wrapper
+                let uploadResult = try await withTimeout(seconds: 30) {
+                    let imagePath = "diml_images/\(UUID().uuidString).jpg"
+                    print("🔥 Uploading to Firebase Storage path: \(imagePath)")
+                    
+                    // Check Firebase Auth state first
+                    guard let currentUser = Auth.auth().currentUser else {
+                        throw NSError(domain: "AuthError", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+                    }
+                    print("🔥 User authenticated: \(currentUser.uid)")
+                    
+                    let downloadURL = try await storage.uploadImage(image, path: imagePath)
+                    print("🔥 Firebase Storage upload successful!")
+                    print("🔥 Download URL: \(downloadURL)")
+                    return downloadURL
+                }
                 
                 let entry = DIMLEntry(
                     id: UUID().uuidString,
@@ -496,8 +568,9 @@ struct GroupDetailView: View {
                     prompt: currentPrompt,
                     response: responseText,
                     image: nil, // Don't store local image since we have Firebase URL
-                    imageURL: downloadURL, // Use Firebase Storage URL
-                    frameSize: capturedFrameSize
+                    imageURL: uploadResult, // Use Firebase Storage URL
+                    frameSize: capturedFrameSize,
+                    promptType: .image // Explicitly set as image prompt
                 )
                 
                 print("🔥 Created DIMLEntry with imageURL: \(entry.imageURL ?? "nil")")
@@ -525,21 +598,58 @@ struct GroupDetailView: View {
                     // Reset animation states when prompt is completed
                     resetAnimationStates()
                     
-                    // Schedule background notification for next prompt unlock
+                    // EntryStore automatically sends upload notifications to OTHER group members
+                    // (correctly excludes the person who uploaded)
+                    
+                    // Schedule notification for when influencer's NEXT prompt unlocks (future)
                     self.scheduleNextPromptNotification()
                     
                     isUploading = false
                     print("🔥 Upload process completed successfully")
                 }
             } catch {
-                print("🔥 Firebase Storage upload error: \(error.localizedDescription)")
+                print("🔥 Upload error: \(error.localizedDescription)")
                 print("🔥 Full error: \(error)")
+                
+                // Determine specific error type
+                let errorMsg: String
+                if error.localizedDescription.contains("timeout") || error.localizedDescription.contains("timed out") {
+                    errorMsg = "Upload timed out. Please check your internet connection and try again."
+                } else if error.localizedDescription.contains("network") || error.localizedDescription.contains("internet") {
+                    errorMsg = "Network error. Please check your internet connection."
+                } else if error.localizedDescription.contains("auth") || error.localizedDescription.contains("permission") {
+                    errorMsg = "Authentication error. Please try logging out and back in."
+                } else {
+                    errorMsg = "Upload failed: \(error.localizedDescription)"
+                }
+                
                 await MainActor.run {
-                    errorMessage = "Upload failed: \(error.localizedDescription)"
+                    errorMessage = errorMsg
                     showError = true
                     isUploading = false
                 }
             }
+        }
+    }
+    
+    // Helper function for timeout handling
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            // Add the main operation
+            group.addTask {
+                return try await operation()
+            }
+            
+            // Add timeout task
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw NSError(domain: "TimeoutError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Operation timed out after \(seconds) seconds"])
+            }
+            
+            // Return the first completed task
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
@@ -550,6 +660,15 @@ struct GroupDetailView: View {
         guard isInfluencer else {
             // Show alert that only influencers can post
             showPermissionAlert = true
+            return
+        }
+        
+        // Check if current prompt has already been completed
+        let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+        if hasCompletedCurrentPrompt {
+            // Show alert that they've already completed this prompt
+            errorMessage = "You've already completed this prompt! Your next prompt will unlock in \(nextPromptCountdown.isEmpty ? "a few hours" : nextPromptCountdown)."
+            showError = true
             return
         }
         
@@ -573,65 +692,52 @@ struct GroupDetailView: View {
     }
 
     private func calculateNextPromptTime() -> Date? {
-        print("⏰ calculateNextPromptTime called")
+        print("⏰ ===== calculateNextPromptTime called =====")
         let calendar = Calendar.current
-        let intervalHours = group.promptFrequency.intervalHours
-        let intervalMinutes = group.promptFrequency.intervalMinutes
         
-        print("⏰ intervalHours: \(intervalHours)")
-        print("⏰ intervalMinutes: \(intervalMinutes)")
-        print("⏰ group.promptFrequency: \(group.promptFrequency)")
+        // Get the group's frequency settings
+        let frequency = group.promptFrequency
+        print("⏰ Group frequency: \(frequency)")
+        print("⏰ Group frequency raw value: \(frequency.rawValue)")
+        print("⏰ intervalHours: \(frequency.intervalHours)")
+        print("⏰ intervalMinutes: \(frequency.intervalMinutes)")
         
-        // Find the most recent entry (regardless of prompt text) to get timing
+        // Find the most recent entry to calculate from
         guard let mostRecentEntry = store.entries.max(by: { $0.timestamp < $1.timestamp }) else {
-            print("⏰ No entries found")
+            print("⏰ No entries found - this should not happen when calculating next prompt time")
             return nil
         }
         
         print("⏰ Found most recent entry with timestamp: \(mostRecentEntry.timestamp)")
         print("⏰ Most recent entry prompt: '\(mostRecentEntry.prompt)'")
         
-        let uploadTime = mostRecentEntry.timestamp
+        let completionTime = mostRecentEntry.timestamp
+        let completionHour = calendar.component(.hour, from: completionTime)
+        print("⏰ Completion hour: \(completionHour)")
         
         // Handle testing mode (1 minute intervals)
-        if group.promptFrequency == .testing {
+        if frequency == .testing {
             print("⏰ Testing mode detected - 1 minute intervals")
-            let nextPromptTime = calendar.date(byAdding: .minute, value: 1, to: uploadTime) ?? uploadTime
+            let nextPromptTime = calendar.date(byAdding: .minute, value: 1, to: completionTime) ?? completionTime
             print("⏰ Next testing prompt time: \(nextPromptTime)")
             return nextPromptTime
         }
         
-        // Active day is 7 AM to 9 PM for regular intervals
-        let activeDayStart = 7
-        let activeDayEnd = 21
+        // For regular frequencies, use the actual interval hours from the enum
+        let intervalHours = frequency.intervalHours
+        print("⏰ Using intervalHours from enum: \(intervalHours)")
         
-        // Calculate the next prompt time by adding the interval to the upload time
-        let nextPromptTime = calendar.date(byAdding: .hour, value: intervalHours, to: uploadTime) ?? uploadTime
-        let nextPromptHour = calendar.component(.hour, from: nextPromptTime)
+        // Calculate the next prompt time by adding the correct interval
+        let nextPromptTime = calendar.date(byAdding: .hour, value: intervalHours, to: completionTime) ?? completionTime
         
-        print("⏰ Upload time: \(uploadTime)")
-        print("⏰ Calculated next prompt time: \(nextPromptTime)")
-        print("⏰ Next prompt hour: \(nextPromptHour)")
+        print("⏰ Completion time: \(completionTime)")
+        print("⏰ Adding \(intervalHours) hours interval")
+        print("⏰ FINAL next prompt time: \(nextPromptTime)")
+        print("⏰ Time difference from completion: \(nextPromptTime.timeIntervalSince(completionTime) / 3600) hours")
+        print("⏰ ===== End calculateNextPromptTime =====")
         
-        // If the next prompt time falls within the active window (7 AM - 9 PM)
-        if nextPromptHour >= activeDayStart && nextPromptHour <= activeDayEnd {
-            print("⏰ Next prompt time is within active window")
-            return nextPromptTime
-        }
-        
-        print("⏰ Next prompt time is outside active window, scheduling for tomorrow")
-        
-        // If the next prompt would be outside the active window, schedule for tomorrow at 7 AM
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: uploadTime) ?? uploadTime
-        var dateComponents = calendar.dateComponents([.year, .month, .day], from: tomorrow)
-        dateComponents.hour = activeDayStart
-        dateComponents.minute = 0
-        dateComponents.second = 0
-        
-        let finalTime = calendar.date(from: dateComponents)
-        print("⏰ Final scheduled time: \(finalTime?.description ?? "nil")")
-        
-        return finalTime
+        // ALWAYS respect the exact frequency interval - no active hours restriction
+        return nextPromptTime
     }
     
     private func updateCountdown() {
@@ -655,9 +761,9 @@ struct GroupDetailView: View {
         
         print("⏰ hasCompletedCurrentPrompt: \(hasCompletedCurrentPrompt)")
         
-        // If hasn't completed current prompt, show waiting message
-        if !hasCompletedCurrentPrompt {
-            print("⏰ Haven't completed current prompt")
+        // CRITICAL: Only show countdown if current prompt is completed
+        guard hasCompletedCurrentPrompt else {
+            print("⏰ Current prompt not completed - no countdown until it's answered")
             nextPromptCountdown = "Complete current prompt first"
             return
         }
@@ -665,7 +771,7 @@ struct GroupDetailView: View {
         // If current prompt is completed, calculate time for NEXT prompt
         guard let nextPromptTime = calculateNextPromptTime() else {
             print("⏰ No next prompt time calculated")
-            nextPromptCountdown = ""
+            nextPromptCountdown = "Error calculating next prompt"
             return
         }
         
@@ -678,79 +784,142 @@ struct GroupDetailView: View {
         
         if timeInterval <= 0 {
             print("⏰ Next prompt time has passed - making new prompt available")
+            nextPromptCountdown = "New prompt available!"
             
             // Only trigger unlock animation if we haven't already done so for this timing cycle
             if !hasTriggeredUnlockForCurrentPrompt {
                 print("🎯 🎬 Setting flag for delayed prompt unlock animation")
-                print("🎯 🎬 Previous hasNewPromptReadyForAnimation: \(hasNewPromptReadyForAnimation)")
                 hasTriggeredUnlockForCurrentPrompt = true
                 
                 // Generate a new prompt when countdown reaches zero
                 let newPrompt = getCurrentPrompt()
                 print("🎯 🎬 getCurrentPrompt() returned: '\(newPrompt)'")
-                print("🎯 🎬 Current stored prompt: '\(currentPrompt)'")
+                
                 if newPrompt != currentPrompt {
                     print("🎯 New prompt available: '\(newPrompt)'")
-                    // Instead of triggering animation immediately, just set flag and update prompt
                     currentPrompt = newPrompt
                     hasNewPromptReadyForAnimation = true
-                    print("🎯 🎬 SET hasNewPromptReadyForAnimation = true")
+                    
+                    // Send prompt unlock notification to influencer
+                    print("📱 🔔 Sending prompt unlock notification for new prompt")
+                    store.notifyPromptUnlock(prompt: newPrompt, influencerId: group.currentInfluencerId, groupName: group.name)
+                    
+                    // Only trigger animation if user is actively viewing this chat
+                    if isActivelyViewingChat {
+                        print("🎯 🎬 User is actively viewing chat - will trigger animation immediately")
+                        hasNewPromptReadyForAnimation = false // Clear flag since we're using it now
+                        
+                        // Small delay to ensure UI is updated
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            triggerPromptUnlockAnimation(newPrompt: newPrompt)
+                        }
+                    } else {
+                        print("🎯 🎬 User not actively viewing chat - animation will trigger when they enter")
+                    }
                     
                     // Update prompt configuration for consistency
-                    currentPromptConfiguration = getCurrentPromptConfiguration()
+                    currentPromptConfiguration = createPromptConfiguration(for: newPrompt)
                     if let newConfig = currentPromptConfiguration {
                         isImagePrompt = newConfig.fields.isEmpty
-                        if !newConfig.prompt.isEmpty {
-                            currentPrompt = newConfig.prompt
-                            print("🎯 🎬 Updated currentPrompt from config: '\(currentPrompt)'")
-                        }
+                        print("🎯 Created configuration for new prompt: '\(newConfig.prompt)'")
                     }
                 } else {
-                    print("🎯 Generated prompt is same as current, generating simple unique prompt")
-                    
-                    // Use a simple, guaranteed unique prompt to avoid freezing
+                    print("🎯 Generated prompt is same as current, generating unique prompt with enhanced seeding")
                     let completedCount = store.entries.count
-                    let fallbackPrompt = "What's happening in your day right now? (\(completedCount + 1))"
                     
-                    print("🎯 Using simple fallback prompt: '\(fallbackPrompt)'")
-                    // Set flag instead of triggering animation
-                    currentPrompt = fallbackPrompt
+                    // Enhanced unique prompt generation with multiple fallback strategies
+                    var uniquePrompt: String = ""
+                    var attempts = 0
+                    let maxAttempts = 100
+                    
+                    // Strategy 1: Try different time-based seeds
+                    while attempts < maxAttempts && (uniquePrompt.isEmpty || uniquePrompt == currentPrompt) {
+                        let timeOfDay = TimeOfDay.current()
+                        let calendar = Calendar.current
+                        let today = Date()
+                        let baseDailySeed = calendar.component(.year, from: today) * 1000 + (calendar.ordinality(of: .day, in: .year, for: today) ?? 1)
+                        
+                        // Use multiple seed variations including attempt number and timestamp
+                        let timestamp = Int(Date().timeIntervalSince1970)
+                        let variationSeed = UInt64(abs(baseDailySeed)) + 
+                                           UInt64(attempts * 12345) + 
+                                           UInt64(completedCount * 6789) +
+                                           UInt64(abs(group.id.hashValue)) +
+                                           UInt64(timestamp % 10000) // Add timestamp variation
+                        
+                        var generator = SeededRandomNumberGenerator(seed: variationSeed)
+                        if let generatedPrompt = promptManager.getSeededPrompt(for: timeOfDay, using: &generator) {
+                            uniquePrompt = generatedPrompt
+                        }
+                        attempts += 1
+                        print("🎯 Attempt \(attempts): Generated '\(uniquePrompt)'")
+                    }
+                    
+                    // Strategy 2: If still no unique prompt, use curated fallbacks
+                    if uniquePrompt.isEmpty || uniquePrompt == currentPrompt {
+                        let curatedPrompts = [
+                            "What's the highlight of your day so far?",
+                            "Show us what you're up to right now",
+                            "What's bringing you joy today?",
+                            "Share a moment from your current adventure",
+                            "What's your vibe right now?",
+                            "Show us your perspective on today",
+                            "What's happening in your world?",
+                            "Share something that made you smile recently",
+                            "What's your current energy like?",
+                            "Show us what's inspiring you today"
+                        ]
+                        
+                        // Use completion count to cycle through curated prompts
+                        uniquePrompt = curatedPrompts[completedCount % curatedPrompts.count]
+                        print("🎯 Using curated prompt: '\(uniquePrompt)'")
+                    }
+                    
+                    print("🎯 Final unique prompt: '\(uniquePrompt)'")
+                    currentPrompt = uniquePrompt
                     hasNewPromptReadyForAnimation = true
-                    print("🎯 🎬 SET hasNewPromptReadyForAnimation = true (fallback)")
+                    isImagePrompt = true
                     
-                    // Update prompt configuration for fallback prompt
-                    isImagePrompt = true // Simple fallback prompts are typically image prompts
+                    // Send prompt unlock notification to influencer for unique prompt
+                    print("📱 🔔 Sending prompt unlock notification for unique prompt")
+                    store.notifyPromptUnlock(prompt: uniquePrompt, influencerId: group.currentInfluencerId, groupName: group.name)
+                    
+                    // Update prompt configuration for the specific unique prompt
+                    currentPromptConfiguration = createPromptConfiguration(for: uniquePrompt)
+                    if let newConfig = currentPromptConfiguration {
+                        isImagePrompt = newConfig.fields.isEmpty
+                        print("🎯 Created configuration for unique prompt: '\(newConfig.prompt)'")
+                    }
                 }
-                
-                print("🎯 🎬 FINAL STATE:")
-                print("🎯 🎬 - currentPrompt: '\(currentPrompt)'")
-                print("🎯 🎬 - hasNewPromptReadyForAnimation: \(hasNewPromptReadyForAnimation)")
-                print("🎯 🎬 - hasTriggeredUnlockForCurrentPrompt: \(hasTriggeredUnlockForCurrentPrompt)")
-            } else {
-                print("⏰ Prompt unlock already triggered for this timing cycle, skipping duplicate")
             }
             return
         }
         
+        // Calculate time remaining and format appropriately
         let hours = Int(timeInterval) / 3600
         let minutes = Int(timeInterval) % 3600 / 60
         let seconds = Int(timeInterval) % 60
         
-        print("⏰ Calculated: \(hours)h \(minutes)m \(seconds)s")
+        print("⏰ Time remaining: \(hours)h \(minutes)m \(seconds)s")
         
-        // For testing mode, show seconds precision
+        // Format countdown based on frequency
         if group.promptFrequency == .testing {
-            if minutes > 0 {
+            // For testing mode, show precise time including seconds
+            if hours > 0 {
+                nextPromptCountdown = "\(hours)h \(minutes)m \(seconds)s"
+            } else if minutes > 0 {
                 nextPromptCountdown = "\(minutes)m \(seconds)s"
             } else {
                 nextPromptCountdown = "\(seconds)s"
             }
         } else {
-            // For regular modes, show hours and minutes
+            // For regular modes, show hours and minutes only
             if hours > 0 {
                 nextPromptCountdown = "\(hours)h \(minutes)m"
-            } else {
+            } else if minutes > 0 {
                 nextPromptCountdown = "\(minutes)m"
+            } else {
+                nextPromptCountdown = "Less than 1m"
             }
         }
         
@@ -761,9 +930,20 @@ struct GroupDetailView: View {
         stopCountdownTimer()
         updateCountdown()
         
-        // Use different timer intervals based on prompt frequency
-        let timerInterval: TimeInterval = group.promptFrequency == .testing ? 1.0 : 60.0
-        print("⏰ Starting countdown timer with interval: \(timerInterval) seconds")
+        // Use appropriate timer intervals based on prompt frequency
+        let timerInterval: TimeInterval
+        switch group.promptFrequency {
+        case .testing:
+            timerInterval = 1.0 // Update every second for testing mode
+        case .hourly:
+            timerInterval = 60.0 // Update every minute for hourly prompts
+        case .threeHours:
+            timerInterval = 300.0 // Update every 5 minutes for 3-hour prompts  
+        case .sixHours:
+            timerInterval = 600.0 // Update every 10 minutes for 6-hour prompts
+        }
+        
+        print("⏰ Starting countdown timer with interval: \(timerInterval) seconds for frequency: \(group.promptFrequency)")
         
         countdownTimer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { _ in
             updateCountdown()
@@ -786,61 +966,78 @@ struct GroupDetailView: View {
     }
     
     private func triggerPromptUnlockAnimation(newPrompt: String) {
-        print("🎬 ===== STARTING PROMPT UNLOCK ANIMATION SEQUENCE =====")
+        print("🎬 ===== STARTING ENHANCED PROMPT UNLOCK ANIMATION SEQUENCE =====")
         print("🎬 Function called with newPrompt: '\(newPrompt)'")
         print("🎬 Current time: \(Date())")
         
-        // Haptic feedback for unlock start
-        print("🎬 Triggering MEDIUM haptic feedback...")
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.prepare() // Prepare the generator
-        impactFeedback.impactOccurred()
-        print("🎬 Medium haptic feedback triggered!")
+        // Enhanced initial haptic feedback - stronger and more noticeable
+        print("🎬 Triggering HEAVY haptic feedback for unlock start...")
+        let startFeedback = UIImpactFeedbackGenerator(style: .heavy)
+        startFeedback.prepare()
+        startFeedback.impactOccurred()
+        print("🎬 Heavy haptic feedback triggered!")
         
-        // Step 1: Start countdown refresh animation - this makes the countdown timer flash and indicate it's about to unlock
-        print("🎬 Step 1: Starting countdown refresh animation...")
+        // Step 1: Enhanced countdown refresh animation - more dramatic lock animation
+        print("🎬 Step 1: Starting enhanced countdown refresh animation...")
         withAnimation(.easeInOut(duration: 0.5)) {
             animateCountdownRefresh = true
         }
         print("🎬 animateCountdownRefresh set to: \(animateCountdownRefresh)")
         
-        // Step 2: After refresh, start the unlock transition - countdown timer becomes the unlock state
+        // Add a second haptic pulse for the "unlocking" feel
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            print("🎬 Triggering MEDIUM haptic feedback for unlock pulse...")
+            let pulseFeedback = UIImpactFeedbackGenerator(style: .medium)
+            pulseFeedback.prepare()
+            pulseFeedback.impactOccurred()
+            print("🎬 Medium pulse haptic feedback triggered!")
+        }
+        
+        // Step 2: After refresh, start the unlock transition with more dramatic animation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            print("🎬 Step 2: Starting unlock transition...")
+            print("🎬 Step 2: Starting enhanced unlock transition...")
             
-            // Haptic feedback for unlock phase
+            // Haptic feedback for unlock phase - lighter taps
             print("🎬 Triggering LIGHT haptic feedback...")
             let unlockFeedback = UIImpactFeedbackGenerator(style: .light)
             unlockFeedback.prepare()
             unlockFeedback.impactOccurred()
-            print("🎬 Light haptic feedback triggered!")
             
-            // Set unlocking state - this will make countdown timer transform into loading state
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) {
+            // Add a second light tap for "clicking" unlock sound
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                unlockFeedback.impactOccurred()
+                print("🎬 Double-tap light haptic feedback triggered!")
+            }
+            
+            // Enhanced unlocking state with more spring
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.5)) {
                 isUnlockingPrompt = true
             }
             print("🎬 isUnlockingPrompt set to: \(isUnlockingPrompt)")
             
-            // Step 3: Complete the unlock and reveal the new prompt card
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                print("🎬 Step 3: Revealing new prompt card...")
+            // Step 3: Complete the unlock with celebration haptics and reveal
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                print("🎬 Step 3: Revealing new prompt card with celebration...")
+                print("🎯 Setting currentPrompt to newPrompt: '\(newPrompt)'")
                 currentPrompt = newPrompt
                 hasInteractedWithCurrentPrompt = false
                 
-                // Regenerate and store new configuration for consistency
-                currentPromptConfiguration = getCurrentPromptConfiguration()
+                // Regenerate and store new configuration for consistency - but keep the prompt
+                print("🎯 Generating configuration for the new prompt...")
+                currentPromptConfiguration = createPromptConfiguration(for: newPrompt)
                 if let newConfig = currentPromptConfiguration {
                     isImagePrompt = newConfig.fields.isEmpty
-                    // Update currentPrompt from the stored configuration to ensure consistency
-                    if !newConfig.prompt.isEmpty {
-                        currentPrompt = newConfig.prompt
-                    }
+                    print("🎯 New prompt is image prompt: \(isImagePrompt)")
+                    print("🎯 Configuration generated for prompt: '\(newConfig.prompt)'")
+                    // DON'T overwrite currentPrompt here - keep the newPrompt that was passed in
+                } else {
+                    print("🎯 ⚠️ Failed to generate configuration, keeping newPrompt: '\(newPrompt)'")
+                    isImagePrompt = true // Default to image prompt if config fails
                 }
-                print("🎯 New prompt is image prompt: \(isImagePrompt)")
-                print("🎯 Updated currentPrompt: '\(currentPrompt)'")
+                print("🎯 Final currentPrompt for camera: '\(currentPrompt)'")
                 
-                // Haptic feedback for prompt reveal
-                print("🎬 Triggering SUCCESS haptic feedback...")
+                // Enhanced celebration haptic sequence
+                print("🎬 Triggering SUCCESS haptic celebration...")
                 let successFeedback = UINotificationFeedbackGenerator()
                 successFeedback.prepare()
                 successFeedback.notificationOccurred(.success)
@@ -949,10 +1146,15 @@ struct GroupDetailView: View {
         }
         .onAppear {
             print("🔍 GroupDetailView onAppear - Group: \(group.name) (ID: \(group.id))")
-            print("🔍 🎬 Animation flags on appear:")
-            print("🔍 🎬 - hasNewPromptReadyForAnimation: \(hasNewPromptReadyForAnimation)")
-            print("🔍 🎬 - hasTriggeredUnlockForCurrentPrompt: \(hasTriggeredUnlockForCurrentPrompt)")
-            print("🔍 🎬 - isInfluencer: \(isInfluencer)")
+            print("🔍 🎬 User now actively viewing chat - animations enabled")
+            
+            // Set active viewing flag immediately
+            isActivelyViewingChat = true
+            
+            // Clear refresh indicator after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                isRefreshing = false
+            }
             
             // Always load/check daily prompt - loadDailyPrompt handles timing logic
             print("🔍 Loading daily prompt...")
@@ -964,7 +1166,16 @@ struct GroupDetailView: View {
             if isInfluencer && hasNewPromptReadyForAnimation {
                 print("🔍 🎬 NEW PROMPT READY FOR ANIMATION DETECTED!")
                 print("🔍 🎬 Current prompt: '\(currentPrompt)'")
+                
+                // Store the current prompt before clearing the flag
+                let promptForAnimation = currentPrompt
                 hasNewPromptReadyForAnimation = false // Clear the flag
+                
+                // Show the prompt unlock feedback immediately
+                showNewPromptUnlockedFeedback = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                    showNewPromptUnlockedFeedback = false
+                }
                 
                 // Auto-scroll FIRST, then trigger animation so user can see it happen
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -974,30 +1185,48 @@ struct GroupDetailView: View {
                     // Then trigger animation after scroll completes
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                         print("🔍 🎬 TRIGGERING UNLOCK ANIMATION NOW!")
-                        triggerPromptUnlockAnimation(newPrompt: currentPrompt)
+                        triggerPromptUnlockAnimation(newPrompt: promptForAnimation)
                     }
                 }
             } else if isInfluencer {
-                print("🔍 🎬 No animation flag set, checking for other prompt changes...")
+                print("🔍 🎬 No animation flag set, checking for other prompt unlock scenarios...")
                 print("🔍 🎬 Reasons flag might not be set:")
                 print("🔍 🎬 - isInfluencer: \(isInfluencer)")
                 print("🔍 🎬 - hasNewPromptReadyForAnimation: \(hasNewPromptReadyForAnimation)")
                 
-                // Also check if we should trigger animation based on timing instead of flag
+                // Fallback: Check if we should trigger animation based on timing instead of flag
                 let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+                print("🔍 🎬 - hasCompletedCurrentPrompt: \(hasCompletedCurrentPrompt)")
+                
                 if let nextPromptTime = calculateNextPromptTime() {
                     let timeRemaining = nextPromptTime.timeIntervalSince(Date())
-                    print("🔍 🎬 Timing check - timeRemaining: \(timeRemaining)")
+                    print("🔍 🎬 Timing check - timeRemaining: \(timeRemaining) seconds")
                     
-                    if timeRemaining <= 0 && !hasCompletedCurrentPrompt {
+                    // If time has passed and prompt not completed, this means unlock should happen
+                    if timeRemaining <= 0 && !hasCompletedCurrentPrompt && !hasTriggeredUnlockForCurrentPrompt {
                         print("🔍 🎬 FALLBACK: Triggering animation based on timing check!")
+                        print("🔍 🎬 FALLBACK: Current prompt: '\(currentPrompt)'")
+                        
+                        // Set the triggered flag to prevent multiple triggers
+                        hasTriggeredUnlockForCurrentPrompt = true
+                        
+                        // Show the prompt unlock feedback
+                        showNewPromptUnlockedFeedback = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                            showNewPromptUnlockedFeedback = false
+                        }
+                        
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             shouldAutoScrollToPrompt = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                                 triggerPromptUnlockAnimation(newPrompt: currentPrompt)
                             }
                         }
+                    } else {
+                        print("🔍 🎬 FALLBACK: Not triggering - timeRemaining: \(timeRemaining), hasCompleted: \(hasCompletedCurrentPrompt), hasTriggered: \(hasTriggeredUnlockForCurrentPrompt)")
                     }
+                } else {
+                    print("🔍 🎬 FALLBACK: No next prompt time calculated")
                 }
                 
                 // Standard check for prompt changes (existing logic)
@@ -1009,7 +1238,6 @@ struct GroupDetailView: View {
                 }
                 
                 // Auto-scroll to active prompt for influencers when main view appears (existing logic)
-                // Reuse the hasCompletedCurrentPrompt variable from above instead of redeclaring
                 print("🔄 Auto-scroll check: isInfluencer=\(isInfluencer), currentPrompt='\(currentPrompt)', hasCompleted=\(hasCompletedCurrentPrompt)")
                 
                 if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
@@ -1034,6 +1262,10 @@ struct GroupDetailView: View {
         }
         .onDisappear {
             print("🔍 GroupDetailView onDisappear - Group: \(group.name) (ID: \(group.id))")
+            print("🔍 🎬 User no longer actively viewing chat - animations disabled")
+            
+            // Stop countdown timer when leaving view
+            stopCountdownTimer()
         }
         .onChange(of: groupStore.groups) { newGroups in
             // Update local group state when GroupStore updates - with safety checks
@@ -1069,6 +1301,25 @@ struct GroupDetailView: View {
     private var topBarView: some View {
         VStack(spacing: 0) {
             // Feed update banners
+            if isRefreshing {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(.blue)
+                        .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                        .animation(.linear(duration: 1.0).repeatForever(autoreverses: false), value: isRefreshing)
+                    
+                    Text("Refreshing latest reactions and comments...")
+                        .font(.custom("Fredoka-Medium", size: 14))
+                        .foregroundColor(.blue)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color.blue.opacity(0.1))
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            
             if showPromptCompletedFeedback {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
@@ -1082,6 +1333,7 @@ struct GroupDetailView: View {
                             .foregroundColor(.green)
                             .font(.caption)
                     }
+                    .buttonStyle(PlainButtonStyle()) // iOS 18.5 compatibility
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -1093,24 +1345,60 @@ struct GroupDetailView: View {
             
             if showNewPromptUnlockedFeedback {
                 HStack {
+                    // Animated sparkle icon
                     Image(systemName: "sparkles")
                         .foregroundColor(Color(red: 1.0, green: 0.815, blue: 0.0))
-                    Text("New prompt unlocked! Scroll down to answer it.")
-                        .font(.custom("Fredoka-Medium", size: 14))
-                        .foregroundColor(Color(red: 1.0, green: 0.815, blue: 0.0))
-                    Spacer()
-                    Button(action: { showNewPromptUnlockedFeedback = false }) {
-                        Image(systemName: "xmark")
+                        .scaleEffect(showNewPromptUnlockedFeedback ? 1.2 : 1.0)
+                        .rotationEffect(.degrees(showNewPromptUnlockedFeedback ? 360 : 0))
+                        .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: false), value: showNewPromptUnlockedFeedback)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("🎉 New Prompt Unlocked!")
+                            .font(.custom("Fredoka-Bold", size: 16))
                             .foregroundColor(Color(red: 1.0, green: 0.815, blue: 0.0))
-                            .font(.caption)
+                        
+                        Text("Scroll down to share your response!")
+                            .font(.custom("Fredoka-Regular", size: 14))
+                            .foregroundColor(Color(red: 0.8, green: 0.65, blue: 0.0))
                     }
+                    
+                    Spacer()
+                    
+                    Button(action: { showNewPromptUnlockedFeedback = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(Color(red: 1.0, green: 0.815, blue: 0.0))
+                            .font(.title3)
+                    }
+                    .buttonStyle(PlainButtonStyle()) // iOS 18.5 compatibility
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(red: 1.0, green: 0.815, blue: 0.0).opacity(0.1))
-                .cornerRadius(8)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.815, blue: 0.0).opacity(0.15),
+                            Color(red: 1.0, green: 0.9, blue: 0.2).opacity(0.15)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.815, blue: 0.0), Color.yellow],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            lineWidth: 2
+                        )
+                )
+                .cornerRadius(12)
                 .padding(.horizontal)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .scaleEffect(showNewPromptUnlockedFeedback ? 1.02 : 1.0)
+                .animation(.spring(response: 0.6, dampingFraction: 0.7), value: showNewPromptUnlockedFeedback)
+                .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale))
             }
             
             // Main top bar
@@ -1123,6 +1411,7 @@ struct GroupDetailView: View {
                         .font(.title3)
                         .foregroundColor(.black)
                 }
+                .buttonStyle(PlainButtonStyle()) // iOS 18.5 compatibility
 
                 Spacer()
 
@@ -1138,48 +1427,7 @@ struct GroupDetailView: View {
                     Image(systemName: "slider.horizontal.3")
                         .foregroundColor(.black)
                 }
-                
-                // Temporary test notification button (for debugging)
-                if isInfluencer {
-                    Button(action: {
-                        print("🧪 Test notification button tapped")
-                        
-                        // Check notification settings in detail
-                        UNUserNotificationCenter.current().getNotificationSettings { settings in
-                            print("🧪 === Notification Settings Debug ===")
-                            print("🧪 Authorization Status: \(settings.authorizationStatus.rawValue)")
-                            print("🧪 Alert Setting: \(settings.alertSetting.rawValue)")
-                            print("🧪 Sound Setting: \(settings.soundSetting.rawValue)")
-                            print("🧪 Badge Setting: \(settings.badgeSetting.rawValue)")
-                            print("🧪 Notification Center Setting: \(settings.notificationCenterSetting.rawValue)")
-                            print("🧪 Lock Screen Setting: \(settings.lockScreenSetting.rawValue)")
-                            print("🧪 Car Play Setting: \(settings.carPlaySetting.rawValue)")
-                            print("🧪 Critical Alert Setting: \(settings.criticalAlertSetting.rawValue)")
-                            print("🧪 Announcement Setting: \(settings.announcementSetting.rawValue)")
-                            print("🧪 Scheduled Delivery Setting: \(settings.scheduledDeliverySetting.rawValue)")
-                            print("🧪 === End Notification Settings ===")
-                            
-                            // Check if we can send notifications
-                            if settings.authorizationStatus == .authorized {
-                                print("🧪 ✅ Authorized - sending test notification")
-                                print("🧪 💡 To test background notifications:")
-                                print("🧪    1. Tap this button")
-                                print("🧪    2. Immediately close the app (swipe up, don't just minimize)")
-                                print("🧪    3. Wait 2 seconds")
-                                print("🧪    4. You should see a notification on your lock screen/home screen")
-                                
-                                // Test different notification types
-                                self.sendTestNotifications()
-                            } else {
-                                print("🧪 ❌ Not authorized - status: \(settings.authorizationStatus)")
-                            }
-                        }
-                        
-                    }) {
-                        Image(systemName: "bell.badge")
-                            .foregroundColor(.blue)
-                    }
-                }
+                .buttonStyle(PlainButtonStyle()) // iOS 18.5 compatibility
             }
             .padding(.horizontal)
             .padding(.top, 12)
@@ -1223,6 +1471,10 @@ struct GroupDetailView: View {
                 }
             }
         }
+        .refreshable {
+            print("🔄 Pull-to-refresh triggered - force refreshing entries")
+            await refreshEntries()
+        }
         .simultaneousGesture(
             TapGesture()
                 .onEnded { _ in
@@ -1248,6 +1500,21 @@ struct GroupDetailView: View {
                 print("🔄 Auto-scroll skipped: not influencer")
             }
         }
+    }
+    
+    // Add async refresh function
+    private func refreshEntries() async {
+        print("🔄 GroupDetailView: Starting async refresh")
+        await MainActor.run {
+            isRefreshing = true
+            store.refreshEntries()
+        }
+        // Add a small delay to ensure the refresh completes
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        await MainActor.run {
+            isRefreshing = false
+        }
+        print("🔄 GroupDetailView: Refresh completed")
     }
             
     private var bottomNavigationView: some View {
@@ -1275,7 +1542,13 @@ struct GroupDetailView: View {
                         checkCameraPermission()
                     },
                     isInfluencer: isInfluencer,
-                    shouldBounceCamera: isImagePrompt && isInfluencer
+                    shouldBounceCamera: {
+                        // Only bounce if influencer AND current prompt hasn't been completed AND it's an image prompt
+                        let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+                        let shouldBounce = isInfluencer && !hasCompletedCurrentPrompt && isImagePrompt
+                        print("📷 Camera bounce check: isInfluencer=\(isInfluencer), hasCompleted=\(hasCompletedCurrentPrompt), isImagePrompt=\(isImagePrompt), shouldBounce=\(shouldBounce)")
+                        return shouldBounce
+                    }()
                 )
             }
         }
@@ -1425,7 +1698,8 @@ struct GroupDetailView: View {
                     response: finalResponseText,
                     image: nil,
                     imageURL: finalImageURL,
-                    frameSize: FrameSize.random
+                    frameSize: FrameSize.random,
+                    promptType: .text // Explicitly set as text prompt
                 )
                 
                 print("📝 Created entry for text/form submission")
@@ -1451,7 +1725,10 @@ struct GroupDetailView: View {
                     resetAnimationStates()
                     isUploading = false
                     
-                    // Schedule background notification for next prompt unlock
+                    // EntryStore automatically sends upload notifications to OTHER group members
+                    // (correctly excludes the person who uploaded)
+                    
+                    // Schedule notification for when influencer's NEXT prompt unlocks (future)
                     self.scheduleNextPromptNotification()
                     
                     print("📝 Text submission completed successfully")
@@ -1486,69 +1763,114 @@ struct GroupDetailView: View {
         guard let currentUserId = Auth.auth().currentUser?.uid,
               isInfluencer,
               !group.notificationsMuted else {
-            print("📱 Skipping notification scheduling: not influencer or notifications muted")
+            print("📱 ⏭️ Skipping notification scheduling:")
+            print("📱 ⏭️ - currentUserId: \(Auth.auth().currentUser?.uid ?? "nil")")
+            print("📱 ⏭️ - isInfluencer: \(isInfluencer)")
+            print("📱 ⏭️ - notificationsMuted: \(group.notificationsMuted)")
             return
         }
         
         guard let nextPromptTime = calculateNextPromptTime() else {
-            print("📱 No next prompt time calculated, cannot schedule notification")
+            print("📱 ⏭️ No next prompt time calculated, cannot schedule notification")
             return
         }
         
         let now = Date()
         let timeInterval = nextPromptTime.timeIntervalSince(now)
         
-        print("📱 🕐 Scheduling background notification for next prompt")
-        print("📱 🕐 Current time: \(now)")
-        print("📱 🕐 Next prompt time: \(nextPromptTime)")
-        print("📱 🕐 Time interval: \(timeInterval) seconds")
+        print("📱 ⏭️ === SCHEDULING LOCAL PROMPT UNLOCK NOTIFICATION ===")
+        print("📱 ⏭️ Current time: \(now)")
+        print("📱 ⏭️ Next prompt unlock time: \(nextPromptTime)")
+        print("📱 ⏭️ Time interval: \(timeInterval) seconds (\(timeInterval/3600) hours)")
+        print("📱 ⏭️ Group frequency: \(group.promptFrequency)")
         
         // Only schedule if it's in the future
         guard timeInterval > 0 else {
-            print("📱 🕐 Next prompt time is in the past, not scheduling notification")
+            print("📱 ⏭️ ⚠️ Next prompt time is in the past, not scheduling notification")
             return
         }
         
-        // Cancel any existing prompt unlock notifications for this user
+        // Cancel existing prompt unlock notifications to prevent duplicates
         UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
             let existingPromptNotifications = requests.filter { 
-                $0.identifier.contains("prompt_unlocked_\(currentUserId)")
+                $0.identifier.contains("prompt_unlocked")
             }
             
             if !existingPromptNotifications.isEmpty {
                 let identifiersToRemove = existingPromptNotifications.map { $0.identifier }
                 UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
-                print("📱 🕐 Cancelled \(identifiersToRemove.count) existing prompt unlock notifications")
+                print("📱 ⏭️ 🗑️ Cancelled \(identifiersToRemove.count) existing prompt unlock notifications")
+                for identifier in identifiersToRemove {
+                    print("📱 ⏭️ 🗑️ Removed: \(identifier)")
+                }
             }
             
-            // Schedule the new notification
+            // Generate the next prompt text that will be unlocked
+            print("📱 ⏭️ 🎯 Generating next prompt text for notification...")
+            let nextPromptText = self.getCurrentPrompt() // This will generate the next prompt
+            print("📱 ⏭️ 🎯 Next prompt text: '\(nextPromptText)'")
+            
+            // Schedule LOCAL notification for delivery when prompt unlocks
             let content = UNMutableNotificationContent()
-            content.title = "🔓 New Prompt Ready!"
-            content.body = "Your next DIML prompt is ready to answer!"
+            content.title = "🎉 New Prompt Unlocked!"
+            content.body = nextPromptText.isEmpty ? "Your next DIML prompt is ready to answer!" : nextPromptText
             content.sound = .default
             content.badge = 1
             
+            // Enhanced metadata for better notification handling
+            content.userInfo = [
+                "type": "prompt_unlock",
+                "groupId": self.group.id,
+                "groupName": self.group.name,
+                "userId": currentUserId,
+                "prompt": nextPromptText,
+                "promptFrequency": self.group.promptFrequency.rawValue,
+                "unlockTime": nextPromptTime.timeIntervalSince1970
+            ]
+            
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)
-            let identifier = "prompt_unlocked_\(currentUserId)_\(nextPromptTime.timeIntervalSince1970)"
+            let identifier = "prompt_unlocked_local_\(currentUserId)_\(self.group.id)_\(nextPromptTime.timeIntervalSince1970)"
             let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
             
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
-                    print("📱 🕐 ❌ Error scheduling background notification: \(error)")
+                    print("📱 ⏭️ ❌ Error scheduling local prompt unlock notification: \(error)")
                 } else {
-                    print("📱 🕐 ✅ Successfully scheduled background notification")
-                    print("📱 🕐 ✅ Will fire in \(Int(timeInterval)) seconds at \(nextPromptTime)")
-                    
-                    // Verify it was scheduled
-                    UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-                        let scheduledPromptNotifications = requests.filter { 
-                            $0.identifier.contains("prompt_unlocked")
-                        }
-                        print("📱 🕐 📋 Total scheduled prompt notifications: \(scheduledPromptNotifications.count)")
-                    }
+                    print("📱 ⏭️ ✅ Successfully scheduled LOCAL prompt unlock notification")
+                    print("📱 ⏭️ ✅ Will fire in \(Int(timeInterval)) seconds at \(nextPromptTime)")
+                    print("📱 ⏭️ ✅ Notification will show: '\(nextPromptText)'")
+                    print("📱 ⏭️ ✅ Works when app is backgrounded (but not when completely terminated)")
+                    print("📱 ⏭️ ✅ Notification ID: \(identifier)")
                 }
             }
         }
+    }
+    
+    // Clean up function for account switching
+    private func clearAllPendingNotifications() {
+        print("📱 🧹 === CLEARING ALL PENDING LOCAL NOTIFICATIONS ===")
+        print("📱 🧹 This prevents duplicate notifications when switching user accounts")
+        
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let allNotificationIds = requests.map { $0.identifier }
+            
+            if !allNotificationIds.isEmpty {
+                UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+                print("📱 🧹 ✅ Cleared \(allNotificationIds.count) pending local notifications")
+                for identifier in allNotificationIds {
+                    print("📱 🧹 🗑️ Cleared: \(identifier)")
+                }
+            } else {
+                print("📱 🧹 ℹ️ No pending notifications to clear")
+            }
+        }
+    }
+    
+    private func sendImmediatePromptUnlockNotification(prompt: String) {
+        // REMOVED: This method was causing duplicate notifications
+        // Upload notifications are now handled exclusively by EntryStore.sendDIMLUploadNotification
+        // which properly filters out the uploader and only notifies other group members
+        print("📱 Immediate prompt unlock notifications disabled to prevent duplicates")
     }
     
     private var nonInfluencerContentView: some View {
@@ -1636,33 +1958,79 @@ struct GroupDetailView: View {
             .padding(.horizontal)
             
             // Action Buttons outside the frame
-            HStack {
+            HStack(spacing: 16) {
                 Button(action: {
-                    print("Share button tapped")
-                    uploadImage(capturedImage!)
+                    print("🔥 Share button tapped")
+                    
+                    // Add immediate haptic feedback
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                    impactFeedback.impactOccurred()
+                    
+                    guard let image = capturedImage else {
+                        print("🔥 ERROR: No captured image available")
+                        errorMessage = "No image to upload. Please take a photo first."
+                        showError = true
+                        return
+                    }
+                    
+                    guard !isUploading else {
+                        print("🔥 Already uploading, ignoring button tap")
+                        return
+                    }
+                    
+                    print("🔥 Starting upload for captured image")
+                    uploadImage(image)
                 }) {
-                    Text(isUploading ? "Uploading..." : "Share")
-                        .font(.custom("Fredoka-Regular", size: 16))
-                        .foregroundColor(.blue)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 12)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
+                    HStack(spacing: 6) {
+                        if isUploading {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 14))
+                        }
+                        
+                        Text(isUploading ? "Uploading..." : "Share")
+                            .font(.custom("Fredoka-Regular", size: 16))
+                    }
+                    .foregroundColor(isUploading ? .gray : .blue)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .background(isUploading ? Color.gray.opacity(0.1) : Color.blue.opacity(0.1))
+                    .cornerRadius(8)
+                    .contentShape(Rectangle()) // Ensure entire area is tappable
                 }
+                .buttonStyle(PlainButtonStyle()) // Fix grey background on iOS 18.5
                 .disabled(isUploading)
+                .opacity(isUploading ? 0.6 : 1.0)
             
                 Button(action: {
-                    print("Retake button tapped")
+                    print("🔥 Retake button tapped")
+                    
+                    // Add haptic feedback
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred()
+                    
                     capturedImage = nil 
+                    responseText = "" // Also clear response text
                 }) {
-                    Text("Retake")
-                        .font(.custom("Fredoka-Regular", size: 16))
-                        .foregroundColor(.red)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 12)
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(8)
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.rotate")
+                            .font(.system(size: 14))
+                        Text("Retake")
+                            .font(.custom("Fredoka-Regular", size: 16))
+                    }
+                    .foregroundColor(.red)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(8)
+                    .contentShape(Rectangle()) // Ensure entire area is tappable
                 }
+                .buttonStyle(PlainButtonStyle()) // Fix grey background on iOS 18.5
+                .disabled(isUploading)
+                .opacity(isUploading ? 0.6 : 1.0)
             }
             .padding(.horizontal)
             .padding(.top, 12)
@@ -1673,72 +2041,109 @@ struct GroupDetailView: View {
     private var animatedCountdownTimerView: some View {
         VStack(spacing: 16) {
             let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
-            let shouldShowNextPrompt = shouldShowNextPrompt()
             let isInitialPrompt = store.entries.isEmpty
             
-            // Show prompt card when:
-            // 1. No entries yet (initial state)
-            // 2. During unlock animation
-            // 3. After unlock animation is complete
-            // 4. Current prompt hasn't been completed and timing allows
+            // CORRECTED LOGIC: Show prompt card when:
+            // 1. No entries yet (very first prompt)
+            // 2. During unlock animation 
+            // 3. After unlock animation is complete (showNewPromptCard = true)
+            // 4. Current prompt hasn't been completed yet (active prompt state)
             let shouldShowPromptCard = isInitialPrompt || 
                                      isUnlockingPrompt || 
                                      showNewPromptCard ||
-                                     (!hasCompletedCurrentPrompt && shouldShowNextPrompt)
+                                     !hasCompletedCurrentPrompt
             
             if shouldShowPromptCard {
-                // Show the prompt card
+                // Show the prompt card with enhanced unlock animation
                 if let config = currentPromptConfiguration {
                     PromptCard(configuration: config) { response in
                         handlePromptResponse(response)
                     }
-                    .scaleEffect(showNewPromptCard ? 1.0 : (isInitialPrompt ? 1.0 : 0.95))
+                    .scaleEffect(showNewPromptCard ? 1.05 : (isInitialPrompt ? 1.0 : 0.95))
                     .opacity(showNewPromptCard ? 1.0 : (isInitialPrompt ? 1.0 : 0.8))
-                    .animation(.spring(response: 1.2, dampingFraction: 0.6), value: showNewPromptCard)
+                    .rotation3DEffect(
+                        .degrees(isUnlockingPrompt ? 5 : 0),
+                        axis: (x: 0, y: 1, z: 0)
+                    )
+                    .animation(.spring(response: 1.0, dampingFraction: 0.5), value: showNewPromptCard)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.5), value: isUnlockingPrompt)
                     .transition(.scale.combined(with: .opacity))
+                    .overlay(
+                        // Sparkle effect when unlocking
+                        showNewPromptCard ? AnyView(
+                            ZStack {
+                                ForEach(0..<8, id: \.self) { index in
+                                    Image(systemName: "sparkle")
+                                        .foregroundColor(.yellow)
+                                        .scaleEffect(0.5)
+                                        .offset(
+                                            x: cos(Double(index) * .pi / 4) * 60,
+                                            y: sin(Double(index) * .pi / 4) * 60
+                                        )
+                                        .opacity(showNewPromptCard ? 1.0 : 0.0)
+                                        .animation(
+                                            .easeOut(duration: 1.5)
+                                            .delay(Double(index) * 0.1),
+                                            value: showNewPromptCard
+                                        )
+                                }
+                            }
+                        ) : AnyView(EmptyView())
+                    )
                 } else {
                     Text("Loading prompt...")
                         .font(.custom("Fredoka-Regular", size: 16))
                         .foregroundColor(.gray)
                         .padding()
                 }
-            } else {
-                // Show countdown timer card only when prompt is completed and waiting for next
+            } else if hasCompletedCurrentPrompt && !isInitialPrompt {
+                // COUNTDOWN TIMER: Only show after prompt has been completed
+                // This replaces the prompt card when user has uploaded their response
                 HStack {
-                    // Animated lock icon
-                    Image(systemName: "lock.fill")
-                        .foregroundColor(.gray)
-                        .rotationEffect(.degrees(animateCountdownRefresh ? 360 : 0))
-                        .scaleEffect(animateCountdownRefresh ? 1.1 : 1.0)
-                        .animation(.easeInOut(duration: 0.8), value: animateCountdownRefresh)
+                    // Enhanced animated lock icon with more dramatic effects
+                    ZStack {
+                        // Glow effect when animating
+                        if animateCountdownRefresh {
+                            Circle()
+                                .fill(Color.yellow.opacity(0.3))
+                                .frame(width: 40, height: 40)
+                                .scaleEffect(animateCountdownRefresh ? 1.5 : 1.0)
+                                .opacity(animateCountdownRefresh ? 0.0 : 1.0)
+                                .animation(.easeOut(duration: 0.8), value: animateCountdownRefresh)
+                        }
+                        
+                        Image(systemName: isUnlockingPrompt ? "lock.open.fill" : "lock.fill")
+                            .foregroundColor(isUnlockingPrompt ? .green : .gray)
+                            .font(.title2)
+                            .rotationEffect(.degrees(animateCountdownRefresh ? 360 : 0))
+                            .scaleEffect(animateCountdownRefresh ? 1.2 : 1.0)
+                            .rotation3DEffect(
+                                .degrees(isUnlockingPrompt ? 180 : 0),
+                                axis: (x: 0, y: 1, z: 0)
+                            )
+                            .animation(.easeInOut(duration: 0.8), value: animateCountdownRefresh)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.5), value: isUnlockingPrompt)
+                    }
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Next Prompt Unlocking in...")
                             .font(.custom("Fredoka-Regular", size: 14))
                             .foregroundColor(.gray)
                         
-                        if nextPromptCountdown.isEmpty {
-                            Text("Upload current prompt first")
-                                .font(.custom("Fredoka-Medium", size: 16))
-                                .foregroundColor(.gray)
-                        } else if nextPromptCountdown == "Complete current prompt first" {
-                            Text("Upload current prompt first")
-                                .font(.custom("Fredoka-Medium", size: 16))
-                                .foregroundColor(.gray)
-                        } else if nextPromptCountdown == "New prompt available!" && !hasCompletedCurrentPrompt {
-                            Text("Answer the prompt above!")
-                                .font(.custom("Fredoka-Medium", size: 16))
-                                .foregroundColor(.black)
-                                .scaleEffect(animateCountdownRefresh ? 1.05 : 1.0)
-                                .animation(.easeInOut(duration: 0.5).repeatCount(3, autoreverses: true), value: animateCountdownRefresh)
-                        } else if nextPromptCountdown == "New prompt available!" && hasCompletedCurrentPrompt {
+                        if nextPromptCountdown == "New prompt available!" {
                             Text("Ready to unlock!")
                                 .font(.custom("Fredoka-Medium", size: 16))
                                 .foregroundColor(.green)
-                        } else {
+                                .scaleEffect(animateCountdownRefresh ? 1.1 : 1.0)
+                                .animation(.spring(response: 0.4, dampingFraction: 0.6), value: animateCountdownRefresh)
+                        } else if !nextPromptCountdown.isEmpty {
                             Text(nextPromptCountdown)
                                 .font(.custom("Fredoka-Medium", size: 16))
                                 .foregroundColor(.black)
+                        } else {
+                            Text("Calculating...")
+                                .font(.custom("Fredoka-Medium", size: 16))
+                                .foregroundColor(.gray)
                         }
                     }
                     Spacer()
@@ -1746,41 +2151,41 @@ struct GroupDetailView: View {
                 .padding()
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(red: 1.0, green: 0.95, blue: 0.80))
+                        .fill(isUnlockingPrompt ? 
+                              LinearGradient(
+                                colors: [Color.green.opacity(0.2), Color.yellow.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                              ) :
+                              LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.95, blue: 0.80)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                              )
+                        )
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
-                                .stroke(animateCountdownRefresh ? Color.green : Color.clear, lineWidth: 2)
+                                .stroke(
+                                    animateCountdownRefresh ? 
+                                    LinearGradient(
+                                        colors: [Color.green, Color.yellow],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ) : 
+                                    LinearGradient(colors: [Color.clear], startPoint: .top, endPoint: .bottom),
+                                    lineWidth: animateCountdownRefresh ? 3 : 0
+                                )
                                 .animation(.easeInOut(duration: 0.3), value: animateCountdownRefresh)
                         )
                 )
-                .scaleEffect(animateCountdownRefresh ? 1.02 : 1.0)
-                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: animateCountdownRefresh)
-                .transition(.scale.combined(with: .opacity))
-            }
-            
-            // Show countdown for NEXT prompt after current one is unlocked and completed
-            if showNewPromptCard && hasCompletedCurrentPrompt {
-                HStack {
-                    Image(systemName: "clock.fill")
-                        .foregroundColor(.gray)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Next Prompt Unlocking in...")
-                            .font(.custom("Fredoka-Regular", size: 14))
-                            .foregroundColor(.gray)
-                        
-                        Text("Complete current prompt first")
-                            .font(.custom("Fredoka-Medium", size: 16))
-                            .foregroundColor(.gray)
-                    }
-                    Spacer()
-                }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(red: 0.95, green: 0.95, blue: 0.95))
+                .scaleEffect(animateCountdownRefresh ? 1.03 : 1.0)
+                .rotation3DEffect(
+                    .degrees(isUnlockingPrompt ? 5 : 0),
+                    axis: (x: 1, y: 0, z: 0)
                 )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: animateCountdownRefresh)
+                .animation(.spring(response: 0.6, dampingFraction: 0.5), value: isUnlockingPrompt)
+                .transition(.scale.combined(with: .opacity))
             }
         }
         .padding(.horizontal)
@@ -1843,13 +2248,27 @@ struct GroupDetailView: View {
     }
     
     private var influencerEntryView: some View {
-        // Check if influencer has posted today's prompt
-        let influencerTodayEntry = store.entries.first { entry in
-            entry.prompt == currentPrompt && entry.userId == group.currentInfluencerId
+        // Find the most recent entry by the influencer (within last 24 hours for relevance)
+        let oneDayAgo = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let influencerRecentEntry = store.entries
+            .filter { entry in
+                entry.userId == group.currentInfluencerId && entry.timestamp > oneDayAgo
+            }
+            .max(by: { $0.timestamp < $1.timestamp })
+        
+        print("🔍 influencerEntryView: Looking for influencer entries")
+        print("🔍 Total entries in store: \(store.entries.count)")
+        print("🔍 Current influencer ID: \(group.currentInfluencerId)")
+        print("🔍 Entries by influencer: \(store.entries.filter { $0.userId == group.currentInfluencerId }.count)")
+        print("🔍 Recent entries by influencer: \(store.entries.filter { $0.userId == group.currentInfluencerId && $0.timestamp > oneDayAgo }.count)")
+        if let recentEntry = influencerRecentEntry {
+            print("🔍 Found recent influencer entry: '\(recentEntry.prompt)' at \(recentEntry.timestamp)")
+        } else {
+            print("🔍 No recent influencer entry found")
         }
         
-        if let entry = influencerTodayEntry {
-            // Show influencer's completed entry for today
+        if let entry = influencerRecentEntry {
+            // Show influencer's most recent entry
             return AnyView(
                 VStack(alignment: .leading, spacing: 0) {
                     // Prompt text at the top
@@ -1933,7 +2352,7 @@ struct GroupDetailView: View {
                         Spacer()
                         HStack {
                             Spacer()
-                            ReactionButton(entryId: entry.id, entryStore: store)
+                            ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
                                 .padding(.trailing, 20)
                                 .padding(.bottom, 20)
                         }
@@ -1975,24 +2394,33 @@ struct GroupDetailView: View {
         // Create the same configuration that would have been used for this entry
         let entryConfiguration = getEntryConfigurationMatchingPrompt(for: entry)
         
-        // Display completed entry using the same PromptCard styling
+        // Display completed entry using the same PromptCard styling with reaction button
         return PromptCard(
             configuration: entryConfiguration,
             onComplete: nil // No completion handler for completed entries
         )
         .opacity(0.9) // Slightly dimmed to show it's completed
+        .overlay(
+            // Add reaction button positioned in bottom right corner (consistent with influencer post)
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
+                }
+            }
+        )
     }
     
     private func getEntryConfigurationMatchingPrompt(for entry: DIMLEntry) -> PromptConfiguration {
-        // Sort all entries by timestamp to get chronological order
-        let sortedEntries = store.entries.sorted { $0.timestamp < $1.timestamp }
-        
-        // Find the chronological index of this entry
-        let entryIndex = sortedEntries.firstIndex(where: { $0.id == entry.id }) ?? 0
-        let isEvenPrompt = entryIndex % 2 == 0
-        
-        if isEvenPrompt {
+        // Use the actual promptType stored in the entry instead of calculating based on position
+        if entry.promptType == .image {
             // This was an image prompt - show with date bubble only if it was the first entry
+            let sortedEntries = store.entries.sorted { $0.timestamp < $1.timestamp }
+            let entryIndex = sortedEntries.firstIndex(where: { $0.id == entry.id }) ?? 0
+            
             return PromptConfiguration(
                 prompt: entry.prompt,
                 fields: entry.imageURL != nil ? [] : [
@@ -2005,7 +2433,9 @@ struct GroupDetailView: View {
                 frameSize: entry.frameSize
             )
         } else {
-            // This was a text prompt - determine which type
+            // This was a text prompt - determine which type based on chronological position
+            let sortedEntries = store.entries.sorted { $0.timestamp < $1.timestamp }
+            let entryIndex = sortedEntries.firstIndex(where: { $0.id == entry.id }) ?? 0
             let textPromptType = entryIndex % 3
             
             if textPromptType == 1 {
@@ -2063,43 +2493,13 @@ struct GroupDetailView: View {
     }
 
     // MARK: - Helper Methods
+}
+
+// MARK: - Debug and Testing Methods
+extension GroupDetailView {
     
-    private func sendTestNotifications() {
-        guard Auth.auth().currentUser?.uid != nil else {
-            print("🧪 ❌ No current user ID")
-            return
-        }
-        
-        print("🧪 Sending single test notification...")
-        
-        // Single test notification
-        let content = UNMutableNotificationContent()
-        content.title = "🧪 Test Notification"
-        content.body = "This should appear both in foreground and background"
-        content.sound = .default
-        content.badge = 1
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2.0, repeats: false)
-        let request = UNNotificationRequest(identifier: "single_test_\(Date().timeIntervalSince1970)", content: content, trigger: trigger)
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("🧪 ❌ Test notification error: \(error.localizedDescription)")
-            } else {
-                print("🧪 ✅ Test notification scheduled successfully")
-                
-                // Check what's pending
-                UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-                    print("🧪 📋 Total pending notifications: \(requests.count)")
-                    for request in requests {
-                        if request.identifier.contains("test") {
-                            print("🧪 📋 Test notification: \(request.identifier) - \(request.content.title)")
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // Test notification methods removed for cleaner code
+    
 }
 
 // MARK: - Preview

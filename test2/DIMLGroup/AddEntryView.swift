@@ -40,7 +40,8 @@ struct AddEntryView: View {
                     prompt: prompt,
                     response: response,
                     image: selectedImage,
-                    frameSize: FrameSize.random
+                    frameSize: FrameSize.random,
+                    promptType: selectedImage != nil ? .image : .text
                 )
                 store.addEntry(newEntry)
                 onComplete?(newEntry)

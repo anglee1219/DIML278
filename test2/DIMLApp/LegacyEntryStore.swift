@@ -16,7 +16,8 @@ class LegacyEntryStore: ObservableObject {
             prompt: prompt,
             response: response,
             image: image,
-            frameSize: frameSize ?? FrameSize.random
+            frameSize: frameSize ?? FrameSize.random,
+            promptType: image != nil ? .image : .text // Set promptType based on whether there's an image
         )
         entries.insert(newEntry, at: 0)
         saveEntries()
@@ -77,7 +78,8 @@ class LegacyEntryStore: ObservableObject {
                     response: codableEntry.response,
                     image: image,
                     timestamp: codableEntry.timestamp,
-                    frameSize: codableEntry.frameSize
+                    frameSize: codableEntry.frameSize,
+                    promptType: image != nil ? .image : .text // Set promptType based on whether there's an image
                 )
             }
         } catch {

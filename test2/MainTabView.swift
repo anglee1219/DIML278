@@ -14,18 +14,8 @@ struct MainTabView: View {
 
     // Handle camera permission
     func checkCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            showCamera = true
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    showCamera = granted
-                }
-            }
-        default:
-            showPermissionAlert = true
-        }
+        // Show helpful message directing users to their circles
+        showPermissionAlert = true
     }
 
     var body: some View {
@@ -74,14 +64,9 @@ struct MainTabView: View {
         }
         .alert(isPresented: $showPermissionAlert) {
             Alert(
-                title: Text("Camera Access Required"),
-                message: Text("Please enable camera access in Settings."),
-                primaryButton: .default(Text("Settings")) {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                },
-                secondaryButton: .cancel()
+                title: Text("📱 Camera for DIML"),
+                message: Text("To take photos for your prompts, go to one of your circles! Only today's influencer can snap pictures for their group."),
+                dismissButton: .default(Text("Got it!"))
             )
         }
     }

@@ -174,17 +174,8 @@ struct ProfileView: View {
                                 .padding(.horizontal, 24)
                                 .padding(.top, 24)
                             
-                            VStack(spacing: 0) {
-                                Text("May 9th, 2025")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.gray)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 20)
-                            }
-                            .background(Color.white)
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(0.05), radius: 8, y: 4)
-                            .padding(.horizontal, 24)
+                            MyCapsuleView()
+                                .padding(.horizontal, 24)
                         }
                         
                         Spacer(minLength: 80)
