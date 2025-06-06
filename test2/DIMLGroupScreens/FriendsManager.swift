@@ -95,15 +95,20 @@ class FriendsManager: ObservableObject {
     }
     
     private func fetchSuggestedUsers(currentUserId: String) {
-        // Fetch suggested users (users who are not friends) AFTER friends list is loaded
+        print("🔍 FriendsManager: Fetching suggested users...")
+        print("🔍 Current user ID: \(currentUserId)")
+        print("🔍 Current friends count: \(self.friends.count)")
+        
+        // Fetch ALL users from Firestore (remove the limit to get everyone)
         db.collection("users")
-            .limit(to: 20)
             .getDocuments { [weak self] snapshot, error in
                 guard let self = self,
                       let snapshot = snapshot else {
-                    print("Error fetching suggested users: \(error?.localizedDescription ?? "Unknown error")")
+                    print("❌ Error fetching suggested users: \(error?.localizedDescription ?? "Unknown error")")
                     return
                 }
+                
+                print("🔍 Fetched \(snapshot.documents.count) total users from Firestore")
                 
                 // NOW we have the current friends list loaded, so we can properly filter
                 let currentFriendIds = Set(self.friends.map { $0.id })
@@ -113,14 +118,16 @@ class FriendsManager: ObservableObject {
                     let data = document.data()
                     let userId = document.documentID
                     
+                    print("🔍 Processing user: \(userId) - \(data["name"] as? String ?? "No name")")
+                    
                     // Skip current user and existing friends
                     let shouldSkip = userId == currentUserId || currentFriendIds.contains(userId)
                     if shouldSkip {
-                        print("🔍 Skipping user \(userId): current user or already friend")
+                        print("🔍 Skipping user \(userId): \(userId == currentUserId ? "current user" : "already friend")")
                         return nil
                     }
                     
-                    return User(
+                    let user = User(
                         id: userId,
                         name: data["name"] as? String ?? data["username"] as? String ?? "",
                         username: data["username"] as? String,
@@ -133,12 +140,16 @@ class FriendsManager: ObservableObject {
                         school: data["school"] as? String,
                         interests: data["interests"] as? String
                     )
+                    
+                    print("✅ Including user in suggestions: \(user.name) (\(userId))")
+                    return user
                 }
                 
-                print("🔍 Found \(users.count) suggested users after filtering")
+                print("🔍 Final suggested users count: \(users.count)")
                 
                 DispatchQueue.main.async {
                     self.suggestedUsers = users
+                    print("✅ Updated suggestedUsers with \(users.count) users")
                 }
             }
     }
@@ -274,5 +285,23 @@ class FriendsManager: ObservableObject {
             self.friends.removeAll { $0.id == friendId }
             print("🔄 Local friends list updated, now has \(self.friends.count) friends")
         }
+    }
+    
+    // MARK: - Public Methods
+    
+    func refreshSuggestedUsers() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("❌ FriendsManager: No current user for refreshing suggested users")
+            return
+        }
+        
+        print("🔄 FriendsManager: Force refreshing suggested users...")
+        fetchSuggestedUsers(currentUserId: currentUserId)
+    }
+    
+    func forceReloadAll() {
+        print("🔄 FriendsManager: Force reloading all data...")
+        clearAllData()
+        setupListeners()
     }
 } 

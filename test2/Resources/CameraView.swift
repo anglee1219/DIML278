@@ -22,87 +22,58 @@ struct InFrameCameraView: View {
                 .ignoresSafeArea()
             
             if permissionGranted {
-                VStack(spacing: 20) {
-                    // Header with camera controls
-                    VStack(spacing: 12) {
-                        HStack {
-                            Button("Cancel") {
-                                isPresented = false
-                            }
-                            .foregroundColor(.gray)
-                            
-                            Spacer()
-                            
-                            VStack(spacing: 4) {
-                                Text("Frame Your Shot")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                Text(frameSize.displayName)
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            
-                            Spacer()
-                            
-                            Button("🎲") {
-                                frameSize = FrameSize.random
-                            }
-                            .font(.title2)
-                        }
+                ScrollView {
+                    VStack(spacing: 16) { // Reduced from 20 to 16
+                        // Add top padding
+                        Spacer()
+                            .frame(height: 10)
                         
-                        // Camera settings row
-                        HStack(spacing: 15) {
-                            // Flash control
-                            Button(action: {
-                                switch flashMode {
-                                case .off:
-                                    flashMode = .auto
-                                case .auto:
-                                    flashMode = .on
-                                case .on:
-                                    flashMode = .off
-                                @unknown default:
-                                    flashMode = .auto
+                        // Header with camera controls
+                        VStack(spacing: 10) { // Reduced from 12 to 10
+                            HStack {
+                                Button("Cancel") {
+                                    isPresented = false
                                 }
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: flashMode == .off ? "bolt.slash" : flashMode == .auto ? "bolt.badge.a" : "bolt")
-                                    Text(flashMode == .off ? "Off" : flashMode == .auto ? "Auto" : "On")
+                                .foregroundColor(.gray)
+                                
+                                Spacer()
+                                
+                                VStack(spacing: 4) {
+                                    Text("Frame Your Shot")
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                    Text(frameSize.displayName)
                                         .font(.caption)
+                                        .foregroundColor(.gray)
                                 }
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
+                                
+                                Spacer()
+                                
+                                Button("🎲") {
+                                    frameSize = FrameSize.random
+                                }
+                                .font(.title2)
                             }
                             
-                            // Camera flip button
-                            Button(action: {
-                                isFrontCamera.toggle()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "camera.rotate")
-                                    Text(isFrontCamera ? "Front" : "Back")
-                                        .font(.caption)
-                                }
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
-                            }
-                            
-                            // Camera lens selector (only for back camera)
-                            if !isFrontCamera {
+                            // Camera settings row
+                            HStack(spacing: 15) {
+                                // Flash control
                                 Button(action: {
-                                    isUltraWide.toggle()
+                                    switch flashMode {
+                                    case .off:
+                                        flashMode = .auto
+                                    case .auto:
+                                        flashMode = .on
+                                    case .on:
+                                        flashMode = .off
+                                    @unknown default:
+                                        flashMode = .auto
+                                    }
                                 }) {
                                     HStack(spacing: 4) {
-                                        Image(systemName: "camera")
-                                        Text(isUltraWide ? "0.5x" : "1x")
+                                        Image(systemName: flashMode == .off ? "bolt.slash" : flashMode == .auto ? "bolt.badge.a" : "bolt")
+                                        Text(flashMode == .off ? "Off" : flashMode == .auto ? "Auto" : "On")
                                             .font(.caption)
-                                            .fontWeight(.semibold)
                                     }
                                     .foregroundColor(.blue)
                                     .padding(.horizontal, 12)
@@ -110,77 +81,110 @@ struct InFrameCameraView: View {
                                     .background(Color.blue.opacity(0.1))
                                     .cornerRadius(8)
                                 }
+                                
+                                // Camera flip button
+                                Button(action: {
+                                    isFrontCamera.toggle()
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "camera.rotate")
+                                        Text(isFrontCamera ? "Front" : "Back")
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.blue)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.blue.opacity(0.1))
+                                    .cornerRadius(8)
+                                }
+                                
+                                // Camera lens selector (only for back camera)
+                                if !isFrontCamera {
+                                    Button(action: {
+                                        isUltraWide.toggle()
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "camera")
+                                            Text(isUltraWide ? "0.5x" : "1x")
+                                                .font(.caption)
+                                                .fontWeight(.semibold)
+                                        }
+                                        .foregroundColor(.blue)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color.blue.opacity(0.1))
+                                        .cornerRadius(8)
+                                    }
+                                }
+                                
+                                Spacer()
                             }
+                        }
+                        .padding()
+                        
+                        // Camera preview in the yellow frame with prompt and response
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Prompt text at the top
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Your Assigned Prompt")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                Text(prompt)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.black)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 16)
+                            .padding(.bottom, 12)
                             
-                            Spacer()
+                            // Camera preview in the middle with dynamic frame size
+                            CameraPreviewView(
+                                flashMode: $flashMode,
+                                isUltraWide: $isUltraWide,
+                                isFrontCamera: $isFrontCamera,
+                                frameSize: frameSize
+                            ) { image in
+                                capturedImage = image
+                                capturedFrameSize = frameSize
+                                isPresented = false
+                            }
+                            .frame(height: frameSize.height)
+                            .cornerRadius(12)
+                            .clipped()
+                            .padding(.horizontal, 16)
+                            
+                            // Response text field at the bottom
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Add your response...")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                TextField("e.g., corepower w/ eliza", text: $previewResponse)
+                                    .font(.body)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 16)
                         }
-                    }
-                    .padding()
-                    
-                    // Reduced top spacer to move camera higher
-                    Spacer()
-                        .frame(maxHeight: 20)
-                    
-                    // Camera preview in the yellow frame with prompt and response
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Prompt text at the top
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Your Assigned Prompt")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Text(prompt)
-                                .font(.body)
-                                .fontWeight(.medium)
-                                .foregroundColor(.black)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
-                        .padding(.bottom, 12)
+                        .background(Color(red: 1.0, green: 0.95, blue: 0.80))
+                        .cornerRadius(15)
+                        .padding(.horizontal)
                         
-                        // Camera preview in the middle with dynamic frame size
-                        CameraPreviewView(
-                            flashMode: $flashMode,
-                            isUltraWide: $isUltraWide,
-                            isFrontCamera: $isFrontCamera,
-                            frameSize: frameSize
-                        ) { image in
-                            capturedImage = image
-                            capturedFrameSize = frameSize
-                            isPresented = false
-                        }
-                        .frame(height: frameSize.height)
-                        .cornerRadius(12)
-                        .clipped()
-                        .padding(.horizontal, 16)
+                        // Instruction text
+                        Text("Position your photo in the frame above • Tap 🎲 to change frame size")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 16) // Reduced from 20 to 16
                         
-                        // Response text field at the bottom
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Add your response...")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            TextField("e.g., corepower w/ eliza", text: $previewResponse)
-                                .font(.body)
-                                .textFieldStyle(PlainTextFieldStyle())
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                        .padding(.bottom, 16)
+                        // Bottom padding for scroll content
+                        Spacer()
+                            .frame(height: 60) // Reduced from minHeight: 100 to 60
                     }
-                    .background(Color(red: 1.0, green: 0.95, blue: 0.80))
-                    .cornerRadius(15)
-                    .padding(.horizontal)
-                    
-                    // Instruction text
-                    Text("Position your photo in the frame above • Tap 🎲 to change frame size")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 20)
-                    
-                    // Larger bottom spacer to push everything up
-                    Spacer()
-                        .frame(minHeight: 100)
+                    .padding(.bottom, 20) // Extra bottom padding
                 }
+                .modifier(ScrollDismissKeyboardModifier()) // Dismiss keyboard when scrolling
             } else {
                 // Permission denied or not granted
                 VStack(spacing: 20) {
@@ -618,4 +622,5 @@ struct CameraView: UIViewControllerRepresentable {
             return normalizedImage ?? image
         }
     }
-} 
+}
+

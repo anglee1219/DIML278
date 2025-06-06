@@ -88,10 +88,6 @@ struct MyCapsuleView: View {
                                 selectedCapsule = capsule
                                 showCapsuleDetail = true
                             }
-                            .tutorialHighlight(
-                                id: capsule.id == dailyCapsules.first?.id ? "daily_capsule" : "",
-                                tutorialManager: tutorialManager
-                            )
                         }
                         
                         if dailyCapsules.count > 3 {
@@ -104,7 +100,6 @@ struct MyCapsuleView: View {
                             }
                         }
                     }
-                    .tutorialHighlight(id: "capsule_main", tutorialManager: tutorialManager)
                 }
                 
                 // Total entry count
@@ -127,18 +122,9 @@ struct MyCapsuleView: View {
         .refreshable {
             await refreshCapsuleData()
         }
-        .tutorialOverlay(tutorialManager: tutorialManager, tutorialID: "capsule")
         .onAppear {
             if userEntries.isEmpty {
                 fetchUserEntries()
-            }
-            
-            // Check if user should see capsule tutorial
-            if tutorialManager.shouldShowTutorial(for: "capsule") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    let steps = TutorialManager.createCapsuleTutorial()
-                    tutorialManager.startTutorial(steps: steps)
-                }
             }
         }
         .sheet(isPresented: $showCapsuleDetail) {

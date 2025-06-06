@@ -41,13 +41,11 @@ struct LoginScreen: View {
                             .keyboardType(.emailAddress)
                             .textContentType(.emailAddress)
                             .padding(.horizontal, 40)
-                            .foregroundColor(.gray)
 
                         SecureField("Password", text: $password)
                             .textFieldStyle(UnderlineTextFieldStyle())
                             .textContentType(.password)
                             .padding(.horizontal, 40)
-                            .foregroundColor(.gray)
                     }
 
                     // Login Button

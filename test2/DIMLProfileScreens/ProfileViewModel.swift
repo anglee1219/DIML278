@@ -400,6 +400,8 @@ class ProfileViewModel: ObservableObject {
                             updatedMemberData["location"] = self.location
                             updatedMemberData["school"] = self.school
                             updatedMemberData["interests"] = self.interests
+                            // Include profile image URL
+                            updatedMemberData["profileImageURL"] = UserDefaults.standard.string(forKey: "profile_image_url_\(userId)") ?? ""
                             print("✅ Updated member data for user \(userId) in group \(groupId)")
                         }
                         
@@ -477,6 +479,9 @@ class ProfileViewModel: ObservableObject {
                             // Cache the compressed image data with user-specific key
                             UserDefaults.standard.set(compressedImageData, forKey: "cached_profile_image_\(userId)")
                             UserDefaults.standard.set(downloadURL.absoluteString, forKey: "profile_image_url_\(userId)")
+                            
+                            // Update group member information with new profile image URL
+                            self.updateGroupMemberInformation(userId: userId)
                         }
                     }
                 }

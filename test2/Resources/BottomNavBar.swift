@@ -35,11 +35,11 @@ struct BottomNavBar: View {
                     onCameraTap()
                 }) {
                     ZStack {
-                    Circle()
+                        Circle()
                             .stroke(shouldBounceCamera ? Color.yellow : Color.gray.opacity(0.5), lineWidth: 2)
-                        .frame(width: 50, height: 50)
+                            .frame(width: 50, height: 50)
                         
-                            Image(systemName: "camera")
+                        Image(systemName: "camera")
                             .foregroundColor(shouldBounceCamera ? .yellow : .gray.opacity(0.7))
                     }
                     .offset(y: bounceOffset)

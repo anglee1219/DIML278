@@ -8,6 +8,7 @@ public struct UnderlineTextFieldStyle: TextFieldStyle {
         VStack {
             configuration
                 .font(.custom("Markazi Text", size: 18))
+                .foregroundColor(.black) // Fixed dark color for all modes
             Rectangle()
                 .frame(height: 1)
                 .foregroundColor(Color.gray.opacity(0.3))

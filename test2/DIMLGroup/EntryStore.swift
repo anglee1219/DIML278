@@ -4,6 +4,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import UserNotifications
 
+
 class EntryStore: ObservableObject {
     @Published private(set) var entries: [DIMLEntry] = []
     private let groupId: String
@@ -324,9 +325,61 @@ class EntryStore: ObservableObject {
                     print("✅ EntryStore: Entry ID \(entry.id) saved with imageURL: \(entry.imageURL ?? "nil")")
                     // The listener will automatically update the local entries array
                     
+                    print("🔔 === ABOUT TO TRIGGER NOTIFICATIONS ===")
+                    print("🔔 Entry saved successfully, now sending notifications to other members")
+                    print("🔔 Entry prompt: '\(entry.prompt)'")
+                    print("🔔 Entry user: \(entry.userId)")
+                    print("🔔 Entry imageURL: \(entry.imageURL ?? "nil")")
+                    print("🔔 Current time: \(Date())")
+                    
+                    // CRITICAL DEBUG: Check user IDs before sending notifications
+                    let entryUserId = entry.userId
+                    let currentAuthUserId = Auth.auth().currentUser?.uid
+                    print("🧪 NOTIFICATION DEBUG:")
+                    print("🧪 Entry.userId: \(entryUserId)")
+                    print("🧪 Auth.currentUser?.uid: \(currentAuthUserId ?? "nil")")
+                    print("🧪 Are they the same? \(entryUserId == currentAuthUserId)")
+                    
+                    // CRITICAL: Add immediate verification that this method is called
+                    print("🚨 CRITICAL: addEntry notification block IS BEING EXECUTED")
+                    print("🚨 CRITICAL: About to call getUserName for: \(entry.userId)")
+                    
                     // Send upload notification to group members
                     self?.getUserName(for: entry.userId) { uploaderName in
+                        print("🧪 NOTIFICATION DEBUG: Got uploader name: \(uploaderName)")
+                        print("🚨 CRITICAL: getUserName callback executed successfully")
+                        
+                        // CRITICAL: Validate that this is actually an influencer posting
+                        guard let currentUserId = Auth.auth().currentUser?.uid else {
+                            print("🧪 ❌ No current user for notification validation")
+                            return
+                        }
+                        
+                        if entry.userId != currentUserId {
+                            print("🧪 ⚠️ WARNING: Entry user ID (\(entry.userId)) doesn't match current user (\(currentUserId))")
+                            print("🧪 ⚠️ This could indicate a sync issue - proceeding with entry.userId")
+                        }
+                        
+                        print("🚨 CRITICAL: About to call getGroupMembers")
                         self?.getGroupMembers { groupMembers in
+                            print("🧪 NOTIFICATION DEBUG: Got \(groupMembers.count) group members before sending notification")
+                            print("🚨 CRITICAL: getGroupMembers callback executed with \(groupMembers.count) members")
+                            
+                            // CRITICAL: Double-check that we have other members to notify
+                            if groupMembers.isEmpty {
+                                print("🧪 ⚠️ WARNING: No other group members found - notifications will not be sent")
+                                print("🧪 ⚠️ This could mean:")
+                                print("🧪 ⚠️ 1. User is the only member in the group")
+                                print("🧪 ⚠️ 2. getGroupMembers is not working correctly")
+                                print("🧪 ⚠️ 3. Group data structure has changed")
+                            } else {
+                                print("🧪 ✅ Will send notifications to \(groupMembers.count) other members")
+                                for (index, memberId) in groupMembers.enumerated() {
+                                    print("🧪 ✅ [\(index + 1)] Member to notify: \(memberId)")
+                                }
+                            }
+                            
+                            print("🚨 CRITICAL: About to call sendDIMLUploadNotification")
                             self?.sendDIMLUploadNotification(uploaderName: uploaderName, prompt: entry.prompt, groupMembers: groupMembers)
                             
                             // Schedule next prompt unlock notification for the influencer
@@ -1136,6 +1189,7 @@ class EntryStore: ObservableObject {
     
     private func sendDIMLUploadNotification(uploaderName: String, prompt: String, groupMembers: [String]) {
         print("📱 EntryStore: === SENDING DIML UPLOAD NOTIFICATION ===")
+        print("📱 🚨 CRITICAL: sendDIMLUploadNotification WAS CALLED!")
         print("📱 Uploader: \(uploaderName)")
         print("📱 Prompt: \(prompt)")
         print("📱 Group members received: \(groupMembers.count)")
@@ -1143,6 +1197,7 @@ class EntryStore: ObservableObject {
         for (index, member) in groupMembers.enumerated() {
             print("📱 [\(index + 1)] Member ID: \(member)")
         }
+        print("📱 🚨 Function called at: \(Date())")
         
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             print("📱 ❌ No current user for upload notification")
@@ -1151,12 +1206,28 @@ class EntryStore: ObservableObject {
         
         print("📱 Current uploader user ID: \(currentUserId)")
         
-        // Don't notify the person who uploaded
-        let membersToNotify = groupMembers.filter { $0 != currentUserId }
+        // CRITICAL: The groupMembers should already be filtered by getGroupMembers, 
+        // but we double-check here to ensure the uploader never gets notified
+        let membersToNotify = groupMembers.filter { memberId in
+            let shouldNotify = memberId != currentUserId
+            if !shouldNotify {
+                print("📱 ⚠️ PREVENTED: Almost notified the uploader themselves! (ID: \(memberId))")
+            }
+            return shouldNotify
+        }
+        
         print("📱 After filtering out uploader: \(membersToNotify.count) members to notify")
         print("📱 Members to notify:")
         for (index, member) in membersToNotify.enumerated() {
             print("📱 🔔 [\(index + 1)] Will notify: \(member)")
+        }
+        
+        // FINAL VALIDATION: Ensure the uploader is NOT in the notification list
+        if membersToNotify.contains(currentUserId) {
+            print("📱 🚨 CRITICAL ERROR: Uploader is still in notification list! This should never happen!")
+            print("📱 🚨 Uploader ID: \(currentUserId)")
+            print("📱 🚨 Members to notify: \(membersToNotify)")
+            return // Abort to prevent self-notification
         }
         
         // Check for duplicates in members to notify
@@ -1167,63 +1238,133 @@ class EntryStore: ObservableObject {
             print("📱 ⚠️ This will cause duplicate notifications!")
         }
         
-        // ENHANCED: Send both local notifications AND FCM push notifications
-        print("📱 🚀 === SENDING BOTH LOCAL AND PUSH NOTIFICATIONS ===")
-        
-        // 1. Send local notifications (works when app is running/backgrounded)
-        for (index, memberId) in membersToNotify.enumerated() {
-            print("📱 🔔 Creating LOCAL notification \(index + 1) for member: \(memberId)")
-            
-            let content = UNMutableNotificationContent()
-            content.title = "📸 New DIML Posted!"
-            content.body = "\(uploaderName) shared: \(prompt)"
-            content.sound = .default
-            content.badge = 1
-            
-            // Custom data for handling the tap
-            content.userInfo = [
-                "type": "diml_upload",
-                "groupId": groupId,
-                "uploaderName": uploaderName,
-                "prompt": prompt,
-                "uploaderId": currentUserId
-            ]
-            
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
-            let identifier = "diml_upload_local_\(groupId)_\(Date().timeIntervalSince1970)_\(memberId)"
-            
-            print("📱 🔔 Local notification identifier: \(identifier)")
-            
-            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-            
-            UNUserNotificationCenter.current().add(request) { error in
-                if let error = error {
-                    print("📱 ❌ Error sending LOCAL DIML upload notification to \(memberId): \(error)")
-                } else {
-                    print("📱 ✅ LOCAL DIML upload notification sent to member \(memberId)")
-                }
-            }
+        // CRITICAL: If no other members to notify, don't send any notifications
+        guard !membersToNotify.isEmpty else {
+            print("📱 ℹ️ No other members to notify - user is the only member or filtering failed")
+            return
         }
         
-        // 2. Send FCM push notifications (works when app is completely terminated)
+        // CRITICAL FIX: Only send FCM push notifications (device-specific)
+        // DO NOT send local notifications as they appear on the current device regardless of target user
+        print("📱 🚀 === SENDING ONLY FCM PUSH NOTIFICATIONS ===")
+        print("📱 🚀 FCM notifications will go to \(membersToNotify.count) specific circle members' devices")
+        print("📱 🚀 Local notifications REMOVED to prevent uploader seeing their own notifications")
+        
+        // Send FCM push notifications using the same pattern as reactions
         print("📱 🚀 Sending FCM push notifications via Cloud Function...")
-        sendFCMPushNotification(
-            to: membersToNotify,
-            title: "📸 New DIML Posted!",
-            body: "\(uploaderName) shared: \(prompt)",
-            data: [
-                "type": "diml_upload",
-                "groupId": groupId,
-                "uploaderName": uploaderName,
-                "prompt": prompt
-            ]
+        print("📱 🚀 FCM notifications will be sent to: \(membersToNotify)")
+        sendUploadNotificationsToMembers(
+            memberIds: membersToNotify,
+            uploaderName: uploaderName,
+            prompt: prompt
         )
         
         print("📱 === UPLOAD NOTIFICATION SENDING COMPLETE ===")
     }
     
+    private func sendUploadNotificationsToMembers(memberIds: [String], uploaderName: String, prompt: String) {
+        print("📱 Sending upload notifications to \(memberIds.count) circle members...")
+        print("📱 🚨 CRITICAL: sendUploadNotificationsToMembers WAS CALLED!")
+        print("📱 🚨 Member IDs to notify: \(memberIds)")
+        print("📱 🚨 Uploader: \(uploaderName)")
+        print("📱 🚨 Prompt: \(prompt)")
+        
+        for (index, memberId) in memberIds.enumerated() {
+            print("📱 🚨 [\(index + 1)] Processing member: \(memberId)")
+            
+            // Get member's FCM token and send notification
+            db.collection("users").document(memberId).getDocument { [weak self] userDoc, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("📱 ❌ Error getting member \(memberId) for upload notification: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let userDoc = userDoc, userDoc.exists, let userData = userDoc.data() else {
+                    print("📱 ❌ Member \(memberId) not found for upload notification")
+                    return
+                }
+                
+                guard let fcmToken = userData["fcmToken"] as? String else {
+                    print("📱 ⚠️ No FCM token found for member \(memberId)")
+                    return
+                }
+                
+                // Send FCM notification to this member using notificationRequests pattern
+                self.sendUploadFCMNotification(
+                    token: fcmToken,
+                    uploaderName: uploaderName,
+                    targetUserId: memberId,
+                    prompt: prompt
+                )
+            }
+        }
+    }
+    
+    private func sendUploadFCMNotification(token: String, uploaderName: String, targetUserId: String, prompt: String) {
+        print("📱 Sending FCM upload notification...")
+        print("📱 🚨 CRITICAL: sendUploadFCMNotification WAS CALLED!")
+        print("📱 🚨 Token: \(String(token.suffix(8)))")
+        print("📱 🚨 Uploader: \(uploaderName)")
+        print("📱 🚨 Target User: \(targetUserId)")
+        print("📱 🚨 Prompt: \(prompt)")
+        
+        // Create notification request for Cloud Function - same pattern as reactions
+        let notificationRequest: [String: Any] = [
+            "fcmToken": token,
+            "title": "📸 New DIML Posted!",
+            "body": "\(uploaderName) just shared their day in your circle!",
+            "data": [
+                "type": "diml_upload",
+                "groupId": groupId,
+                "uploaderName": uploaderName,
+                "prompt": prompt,
+                "targetUserId": targetUserId
+            ],
+            "timestamp": FieldValue.serverTimestamp(),
+            "processed": false,
+            "targetUserId": targetUserId,
+            "notificationType": "diml_upload"
+        ]
+        
+        print("📱 🚨 About to add notification request to Firestore...")
+        print("📱 🚨 Request data: \(notificationRequest)")
+        
+        db.collection("notificationRequests").addDocument(data: notificationRequest) { error in
+            if let error = error {
+                print("❌ Error queuing DIML upload notification: \(error.localizedDescription)")
+                print("❌ 🚨 CRITICAL ERROR: \(error)")
+            } else {
+                print("✅ DIML upload notification queued via Cloud Function for member \(targetUserId)")
+                print("✅ 🚨 CRITICAL SUCCESS: Notification request successfully added to Firestore!")
+            }
+        }
+    }
+    
+    // Manual function to test upload notifications (for debugging)
+    func testUploadNotification() {
+        print("🧪 🚀 === TESTING UPLOAD NOTIFICATION ===")
+        
+        getUserName(for: Auth.auth().currentUser?.uid ?? "") { [weak self] uploaderName in
+            guard let self = self else { return }
+            
+            print("🧪 🚀 Testing with uploader name: \(uploaderName)")
+            
+            self.getGroupMembers { groupMembers in
+                print("🧪 🚀 Testing notification to \(groupMembers.count) group members")
+                
+                self.sendDIMLUploadNotification(
+                    uploaderName: uploaderName,
+                    prompt: "Test notification prompt",
+                    groupMembers: groupMembers
+                )
+            }
+        }
+    }
+    
     private func sendReactionNotification(reactorName: String, reaction: String, entryOwnerId: String, prompt: String) {
-        print("📱 EntryStore: Sending reaction notification")
+        print("📱 EntryStore: === SENDING REACTION NOTIFICATION ===")
         print("📱 Reactor: \(reactorName)")
         print("📱 Reaction: \(reaction)")
         print("📱 Entry owner: \(entryOwnerId)")
@@ -1234,59 +1375,106 @@ class EntryStore: ObservableObject {
             return
         }
         
-        // Don't notify yourself
-        guard currentUserId != entryOwnerId else {
-            print("📱 ℹ️ Not sending reaction notification to self")
-            return
+        print("📱 Current reactor user ID: \(currentUserId)")
+        
+        // Use the improved getGroupMembers method that already excludes current user
+        getGroupMembers { [weak self] otherMemberIds in
+            guard let self = self else { return }
+            
+            print("📱 📋 Reaction notification: Found \(otherMemberIds.count) other circle members to notify")
+            
+            if otherMemberIds.isEmpty {
+                print("📱 ℹ️ No other members to notify about reaction")
+                return
+            }
+            
+            // Send FCM notifications to all other circle members (already excludes reactor)
+            print("📱 🚀 Sending reaction FCM notifications to \(otherMemberIds.count) other members")
+            self.sendReactionNotificationsToMembers(
+                memberIds: otherMemberIds,
+                reactorName: reactorName,
+                reaction: reaction,
+                entryOwnerId: entryOwnerId,
+                prompt: prompt
+            )
         }
+    }
+    
+    private func sendReactionNotificationsToMembers(memberIds: [String], reactorName: String, reaction: String, entryOwnerId: String, prompt: String) {
+        print("📱 Sending reaction notifications to \(memberIds.count) circle members...")
         
-        // Send local notification
-        let content = UNMutableNotificationContent()
-        content.title = "🎉 New Reaction!"
-        content.body = "\(reactorName) reacted \(reaction) to your DIML"
-        content.sound = .default
-        content.badge = 1
-        
-        // Custom data for handling the tap
-        content.userInfo = [
-            "type": "reaction",
-            "groupId": groupId,
-            "reactorName": reactorName,
-            "reaction": reaction,
-            "entryOwnerId": entryOwnerId,
-            "prompt": prompt
-        ]
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
-        let identifier = "reaction_local_\(groupId)_\(Date().timeIntervalSince1970)_\(entryOwnerId)"
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("📱 ❌ Error sending LOCAL reaction notification: \(error)")
-            } else {
-                print("📱 ✅ LOCAL reaction notification sent to entry owner \(entryOwnerId)")
+        for memberId in memberIds {
+            print("📱 Sending reaction notification to member: \(memberId)")
+            
+            // Get member's FCM token and send notification
+            db.collection("users").document(memberId).getDocument { [weak self] userDoc, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("📱 ❌ Error getting member \(memberId) for reaction notification: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let userDoc = userDoc, userDoc.exists, let userData = userDoc.data() else {
+                    print("📱 ❌ Member \(memberId) not found for reaction notification")
+                    return
+                }
+                
+                guard let fcmToken = userData["fcmToken"] as? String else {
+                    print("📱 ⚠️ No FCM token found for member \(memberId)")
+                    return
+                }
+                
+                print("📱 ✅ Found FCM token for member \(memberId), sending notification...")
+                
+                // Send FCM notification to this member
+                self.sendReactionFCMNotification(
+                    token: fcmToken,
+                    reactorName: reactorName,
+                    reaction: reaction,
+                    entryOwnerId: entryOwnerId,
+                    targetUserId: memberId,
+                    prompt: prompt
+                )
             }
         }
+    }
+    
+    private func sendReactionFCMNotification(token: String, reactorName: String, reaction: String, entryOwnerId: String, targetUserId: String, prompt: String) {
+        print("📱 Sending FCM reaction notification...")
         
-        // Send FCM push notification
-        print("📱 🚀 Sending FCM push notification for reaction...")
-        sendFCMPushNotification(
-            to: [entryOwnerId],
-            title: "🎉 New Reaction!",
-            body: "\(reactorName) reacted \(reaction) to your DIML",
-            data: [
+        // Create notification request for Cloud Function
+        let notificationRequest: [String: Any] = [
+            "fcmToken": token,
+            "title": "🎉 New Reaction!",
+            "body": "\(reactorName) reacted \(reaction) to a post in your circle",
+            "data": [
                 "type": "reaction",
                 "groupId": groupId,
                 "reactorName": reactorName,
                 "reaction": reaction,
-                "userId": entryOwnerId
-            ]
-        )
+                "entryOwnerId": entryOwnerId,
+                "targetUserId": targetUserId,
+                "prompt": prompt
+            ],
+            "timestamp": FieldValue.serverTimestamp(),
+            "processed": false,
+            "targetUserId": targetUserId,
+            "notificationType": "reaction"
+        ]
+        
+        print("📱 Adding reaction notification request to Firestore...")
+        db.collection("notificationRequests").addDocument(data: notificationRequest) { error in
+            if let error = error {
+                print("📱 ❌ Error queuing reaction notification: \(error.localizedDescription)")
+            } else {
+                print("📱 ✅ Reaction notification queued via Cloud Function for member \(targetUserId)")
+            }
+        }
     }
     
     private func sendCommentNotification(commenterName: String, commentText: String, entryOwnerId: String, prompt: String) {
-        print("📱 EntryStore: Sending comment notification")
+        print("📱 EntryStore: === SENDING COMMENT NOTIFICATION ===")
         print("📱 Commenter: \(commenterName)")
         print("📱 Comment: \(commentText)")
         print("📱 Entry owner: \(entryOwnerId)")
@@ -1297,55 +1485,99 @@ class EntryStore: ObservableObject {
             return
         }
         
-        // Don't notify yourself
-        guard currentUserId != entryOwnerId else {
-            print("📱 ℹ️ Not sending comment notification to self")
-            return
+        print("📱 Current commenter user ID: \(currentUserId)")
+        
+        // Use the improved getGroupMembers method that already excludes current user
+        getGroupMembers { [weak self] otherMemberIds in
+            guard let self = self else { return }
+            
+            print("📱 📋 Comment notification: Found \(otherMemberIds.count) other circle members to notify")
+            
+            if otherMemberIds.isEmpty {
+                print("📱 ℹ️ No other members to notify about comment")
+                return
+            }
+            
+            // Send FCM notifications to all other circle members (already excludes commenter)
+            print("📱 🚀 Sending comment FCM notifications to \(otherMemberIds.count) other members")
+            self.sendCommentNotificationsToMembers(
+                memberIds: otherMemberIds,
+                commenterName: commenterName,
+                commentText: commentText,
+                entryOwnerId: entryOwnerId,
+                prompt: prompt
+            )
         }
+    }
+    
+    private func sendCommentNotificationsToMembers(memberIds: [String], commenterName: String, commentText: String, entryOwnerId: String, prompt: String) {
+        print("📱 Sending comment notifications to \(memberIds.count) circle members...")
         
-        // Send local notification
-        let content = UNMutableNotificationContent()
-        content.title = "💬 New Comment!"
-        content.body = "\(commenterName): \(commentText)"
-        content.sound = .default
-        content.badge = 1
-        
-        // Custom data for handling the tap
-        content.userInfo = [
-            "type": "comment",
-            "groupId": groupId,
-            "commenterName": commenterName,
-            "commentText": commentText,
-            "entryOwnerId": entryOwnerId,
-            "prompt": prompt
-        ]
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
-        let identifier = "comment_local_\(groupId)_\(Date().timeIntervalSince1970)_\(entryOwnerId)"
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("📱 ❌ Error sending LOCAL comment notification: \(error)")
-            } else {
-                print("📱 ✅ LOCAL comment notification sent to entry owner \(entryOwnerId)")
+        for memberId in memberIds {
+            print("📱 Sending comment notification to member: \(memberId)")
+            
+            // Get member's FCM token and send notification
+            db.collection("users").document(memberId).getDocument { [weak self] userDoc, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("📱 ❌ Error getting member \(memberId) for comment notification: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let userDoc = userDoc, userDoc.exists, let userData = userDoc.data() else {
+                    print("📱 ❌ Member \(memberId) not found for comment notification")
+                    return
+                }
+                
+                guard let fcmToken = userData["fcmToken"] as? String else {
+                    print("📱 ⚠️ No FCM token found for member \(memberId)")
+                    return
+                }
+                
+                // Send FCM notification to this member
+                self.sendCommentFCMNotification(
+                    token: fcmToken,
+                    commenterName: commenterName,
+                    commentText: commentText,
+                    entryOwnerId: entryOwnerId,
+                    targetUserId: memberId,
+                    prompt: prompt
+                )
             }
         }
+    }
+    
+    private func sendCommentFCMNotification(token: String, commenterName: String, commentText: String, entryOwnerId: String, targetUserId: String, prompt: String) {
+        print("📱 Sending FCM comment notification...")
         
-        // Send FCM push notification
-        print("📱 🚀 Sending FCM push notification for comment...")
-        sendFCMPushNotification(
-            to: [entryOwnerId],
-            title: "💬 New Comment!",
-            body: "\(commenterName): \(commentText)",
-            data: [
+        // Create notification request for Cloud Function
+        let notificationRequest: [String: Any] = [
+            "fcmToken": token,
+            "title": "💬 New Comment!",
+            "body": "\(commenterName): \(commentText)",
+            "data": [
                 "type": "comment",
                 "groupId": groupId,
                 "commenterName": commenterName,
                 "commentText": commentText,
-                "userId": entryOwnerId
-            ]
-        )
+                "entryOwnerId": entryOwnerId,
+                "targetUserId": targetUserId,
+                "prompt": prompt
+            ],
+            "timestamp": FieldValue.serverTimestamp(),
+            "processed": false,
+            "targetUserId": targetUserId,
+            "notificationType": "comment"
+        ]
+        
+        db.collection("notificationRequests").addDocument(data: notificationRequest) { error in
+            if let error = error {
+                print("📱 ❌ Error queuing comment notification: \(error.localizedDescription)")
+            } else {
+                print("📱 ✅ Comment notification queued via Cloud Function for member \(targetUserId)")
+            }
+        }
     }
     
     private func sendPromptUnlockNotification(prompt: String, influencerId: String, groupName: String) {
@@ -1471,6 +1703,14 @@ class EntryStore: ObservableObject {
         print("📱 🔍 Group ID: \(groupId)")
         print("📱 🔍 Current user: \(Auth.auth().currentUser?.uid ?? "None")")
         
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("📱 🔍 ❌ No authenticated user")
+            completion([])
+            return
+        }
+        
+        print("📱 🔍 CRITICAL: Current user ID to filter out: '\(currentUserId)'")
+        
         db.collection("groups").document(groupId).getDocument { document, error in
             if let error = error {
                 print("📱 🔍 ❌ Error fetching group members: \(error.localizedDescription)")
@@ -1492,51 +1732,64 @@ class EntryStore: ObservableObject {
             
             print("📱 🔍 📋 Group document data keys: \(data.keys)")
             
+            // Get member IDs from the members array (preferred method)
             if let memberData = data["members"] as? [[String: Any]] {
-                let memberIds = memberData.compactMap { $0["id"] as? String }
+                let allMemberIds = memberData.compactMap { $0["id"] as? String }
                 print("📱 🔍 📋 Found \(memberData.count) member objects in Firestore")
-                print("📱 🔍 📋 Extracted \(memberIds.count) member IDs:")
-                for (index, memberId) in memberIds.enumerated() {
-                    print("📱 🔍 📋 [\(index + 1)] Member ID: \(memberId)")
-                    let isCurrentUser = memberId == Auth.auth().currentUser?.uid
-                    print("📱 🔍 📋 [\(index + 1)] Is current user: \(isCurrentUser)")
-                    
-                    // Show the last 8 characters for easier identification
-                    let shortId = String(memberId.suffix(8))
-                    print("📱 🔍 📋 [\(index + 1)] Short ID: ...\(shortId)")
+                print("📱 🔍 📋 Extracted \(allMemberIds.count) member IDs:")
+                for (index, memberId) in allMemberIds.enumerated() {
+                    let isCurrentUser = memberId == currentUserId
+                    print("📱 🔍 📋 [\(index + 1)] Member ID: '\(memberId)' (Current user: \(isCurrentUser))")
+                }
+                
+                // CRITICAL: Filter out the current user to get OTHER members only
+                let otherMemberIds = allMemberIds.filter { memberId in
+                    let shouldExclude = memberId == currentUserId
+                    if shouldExclude {
+                        print("📱 🔍 🚫 EXCLUDING current user: \(memberId)")
+                    }
+                    return !shouldExclude
+                }
+                print("📱 🔍 🎯 FILTERED RESULT: \(otherMemberIds.count) OTHER members (excluding current user)")
+                for (index, memberId) in otherMemberIds.enumerated() {
+                    print("📱 🔍 🎯 [\(index + 1)] OTHER member: \(memberId)")
+                }
+                
+                // FINAL VALIDATION: Double-check current user is not in the result
+                if otherMemberIds.contains(currentUserId) {
+                    print("📱 🔍 🚨 CRITICAL ERROR: Current user '\(currentUserId)' is STILL in the filtered list!")
+                    print("📱 🔍 🚨 This would cause self-notification!")
+                    print("📱 🔍 🚨 Filtered list: \(otherMemberIds)")
+                } else {
+                    print("📱 🔍 ✅ VERIFIED: Current user '\(currentUserId)' is NOT in filtered list")
                 }
                 
                 // Check for duplicates
-                let uniqueMemberIds = Set(memberIds)
-                if memberIds.count != uniqueMemberIds.count {
-                    print("📱 🔍 ⚠️ DUPLICATE MEMBER IDS DETECTED!")
-                    print("📱 🔍 ⚠️ Total IDs: \(memberIds.count), Unique IDs: \(uniqueMemberIds.count)")
-                    
-                    // Show which IDs are duplicated
-                    let counts = memberIds.reduce(into: [:]) { counts, id in
-                        counts[id, default: 0] += 1
+                let uniqueOtherMemberIds = Set(otherMemberIds)
+                if otherMemberIds.count != uniqueOtherMemberIds.count {
+                    print("📱 🔍 ⚠️ DUPLICATE MEMBER IDS DETECTED in other members!")
+                    print("📱 🔍 ⚠️ Total other IDs: \(otherMemberIds.count), Unique other IDs: \(uniqueOtherMemberIds.count)")
+                }
+                
+                completion(otherMemberIds)
+                
+            } else if let memberIds = data["memberIds"] as? [String] {
+                // Fallback to memberIds array if members array is not available
+                print("📱 🔍 📋 Using fallback memberIds array with \(memberIds.count) members")
+                print("📱 🔍 📋 All memberIds: \(memberIds)")
+                let otherMemberIds = memberIds.filter { memberId in
+                    let shouldExclude = memberId == currentUserId
+                    if shouldExclude {
+                        print("📱 🔍 🚫 EXCLUDING current user from fallback: \(memberId)")
                     }
-                    for (id, count) in counts where count > 1 {
-                        print("📱 🔍 ⚠️ Duplicate ID: \(id) appears \(count) times")
-                    }
+                    return !shouldExclude
                 }
+                print("📱 🔍 🎯 Fallback filtered result: \(otherMemberIds.count) other members")
+                print("📱 🔍 🎯 Fallback other members: \(otherMemberIds)")
+                completion(otherMemberIds)
                 
-                print("📱 🔍 🎯 THESE MEMBER IDS WILL RECEIVE NOTIFICATIONS:")
-                let currentUserId = Auth.auth().currentUser?.uid ?? ""
-                let membersToNotify = memberIds.filter { $0 != currentUserId }
-                for (index, memberId) in membersToNotify.enumerated() {
-                    let shortId = String(memberId.suffix(8))
-                    print("📱 🔍 🎯 [\(index + 1)] WILL NOTIFY: ...\(shortId) (full: \(memberId))")
-                }
-                
-                if membersToNotify.count > 1 {
-                    print("📱 🔍 ⚠️ WARNING: \(membersToNotify.count) DIFFERENT USER IDS WILL RECEIVE NOTIFICATIONS")
-                    print("📱 🔍 ⚠️ THIS WILL CAUSE \(membersToNotify.count) DUPLICATE NOTIFICATIONS ON THE SAME DEVICE")
-                }
-                
-                completion(memberIds)
             } else {
-                print("📱 🔍 ❌ No 'members' field found or wrong format")
+                print("📱 🔍 ❌ No 'members' or 'memberIds' field found")
                 print("📱 🔍 ❌ Available fields: \(data.keys)")
                 completion([])
             }
@@ -1580,7 +1833,9 @@ class EntryStore: ObservableObject {
                     "body": body,
                     "data": data,
                     "timestamp": FieldValue.serverTimestamp(),
-                    "processed": false
+                    "processed": false,
+                    "targetUserId": userId,
+                    "notificationType": "diml_upload"
                 ]
                 
                 self.db.collection("notificationRequests").addDocument(data: notificationRequest) { error in
@@ -1594,6 +1849,75 @@ class EntryStore: ObservableObject {
             }
         }
     }
+    
+    // MARK: - Debug and Testing Methods
+    
+    func debugNotificationFlow() {
+        print("🧪 === DEBUGGING NOTIFICATION FLOW ===")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("🧪 ❌ No current user")
+            return
+        }
+        
+        print("🧪 Current user ID: \(currentUserId)")
+        print("🧪 Group ID: \(groupId)")
+        
+        // Test getGroupMembers
+        getGroupMembers { memberIds in
+            print("🧪 📋 getGroupMembers returned \(memberIds.count) members:")
+            for (index, memberId) in memberIds.enumerated() {
+                let isCurrentUser = memberId == currentUserId
+                print("🧪 📋 [\(index + 1)] \(memberId) (Current user: \(isCurrentUser))")
+            }
+            
+            if memberIds.contains(currentUserId) {
+                print("🧪 🚨 PROBLEM: Current user is in the notification list!")
+                print("🧪 🚨 This means notifications would be sent to the person who posted")
+            } else {
+                print("🧪 ✅ Good: Current user is NOT in the notification list")
+                print("🧪 ✅ Notifications would only go to other circle members")
+            }
+        }
+    }
+    
+    // New function to test notification sending
+    func testNotificationSending() {
+        print("🧪 🚀 === TESTING NOTIFICATION SENDING ===")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("🧪 ❌ No current user")
+            return
+        }
+        
+        // Get group members to test notification flow
+        getGroupMembers { [weak self] memberIds in
+            guard let self = self else { return }
+            
+            print("🧪 🚀 Testing notification to \(memberIds.count) members")
+            
+            if memberIds.isEmpty {
+                print("🧪 ❌ No members to notify - test failed")
+                return
+            }
+            
+            // Send a test notification
+            self.sendFCMPushNotification(
+                to: memberIds,
+                title: "🧪 Test Notification",
+                body: "This is a test notification from \(currentUserId)",
+                data: [
+                    "type": "test",
+                    "groupId": self.groupId,
+                    "testUserId": currentUserId
+                ]
+            )
+            
+            print("🧪 ✅ Test notification sent to \(memberIds.count) members")
+        }
+    }
+    
+
 }
 
 // MARK: - Prompt Unlock Notification Scheduling

@@ -57,12 +57,34 @@ class PushNotificationManager: ObservableObject {
         print("📱 🚀 Target users: \(userIds.count)")
         print("📱 🚀 Uploader: \(uploaderName)")
         print("📱 🚀 Prompt: \(prompt)")
+        print("📱 🚀 Group ID: \(groupId)")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("📱 🚀 ❌ No current user for push notifications")
+            return
+        }
+        
+        print("📱 🚀 Current user (should NOT receive notification): \(currentUserId)")
+        
+        // Double-check: filter out current user if somehow included
+        let filteredUserIds = userIds.filter { $0 != currentUserId }
+        print("📱 🚀 After final filtering: \(filteredUserIds.count) users to notify")
+        
+        if filteredUserIds.count != userIds.count {
+            print("📱 🚀 ⚠️ WARNING: Current user was in the target list but has been filtered out")
+        }
+        
+        guard !filteredUserIds.isEmpty else {
+            print("📱 🚀 ℹ️ No users to notify after filtering")
+            return
+        }
         
         // Get FCM tokens for all target users
         let group = DispatchGroup()
         
-        for userId in userIds {
+        for (index, userId) in filteredUserIds.enumerated() {
             group.enter()
+            print("📱 🚀 [\(index + 1)] Processing user: \(userId)")
             
             db.collection("users").document(userId).getDocument { [weak self] document, error in
                 defer { group.leave() }
@@ -99,7 +121,7 @@ class PushNotificationManager: ObservableObject {
         }
         
         group.notify(queue: .main) {
-            print("📱 🚀 ✅ All DIML upload push notifications sent")
+            print("📱 🚀 ✅ All DIML upload push notifications processed")
         }
     }
     
@@ -154,6 +176,79 @@ class PushNotificationManager: ObservableObject {
                     "userId": userId
                 ]
             )
+        }
+    }
+    
+    func sendCircleCreationPushNotifications(to userIds: [String], creatorName: String, groupName: String, groupId: String) {
+        print("📱 🚀 === SENDING FCM PUSH NOTIFICATIONS FOR CIRCLE CREATION ===")
+        print("📱 🚀 Target users: \(userIds.count)")
+        print("📱 🚀 Creator: \(creatorName)")
+        print("📱 🚀 Circle: \(groupName)")
+        print("📱 🚀 Group ID: \(groupId)")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("📱 🚀 ❌ No current user for circle creation notifications")
+            return
+        }
+        
+        print("📱 🚀 Creator (should NOT receive notification): \(currentUserId)")
+        
+        // Double-check: filter out creator if somehow included
+        let filteredUserIds = userIds.filter { $0 != currentUserId }
+        print("📱 🚀 After final filtering: \(filteredUserIds.count) users to notify")
+        
+        if filteredUserIds.count != userIds.count {
+            print("📱 🚀 ⚠️ WARNING: Creator was in the target list but has been filtered out")
+        }
+        
+        guard !filteredUserIds.isEmpty else {
+            print("📱 🚀 ℹ️ No users to notify after filtering")
+            return
+        }
+        
+        // Get FCM tokens for all target users
+        let group = DispatchGroup()
+        
+        for (index, userId) in filteredUserIds.enumerated() {
+            group.enter()
+            print("📱 🚀 [\(index + 1)] Processing user: \(userId)")
+            
+            db.collection("users").document(userId).getDocument { [weak self] document, error in
+                defer { group.leave() }
+                
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("📱 🚀 ❌ Error fetching FCM token for user \(userId): \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = document?.data(),
+                      let fcmToken = data["fcmToken"] as? String else {
+                    print("📱 🚀 ⚠️ No FCM token found for user \(userId)")
+                    return
+                }
+                
+                print("📱 🚀 📤 Sending circle creation push to user \(userId)")
+                
+                // Send the push notification via FCM
+                self.sendFCMPushNotification(
+                    token: fcmToken,
+                    title: "🎉 Added to New Circle!",
+                    body: "\(creatorName) added you to '\(groupName)'",
+                    data: [
+                        "type": "circle_created",
+                        "groupId": groupId,
+                        "creatorName": creatorName,
+                        "groupName": groupName,
+                        "userId": userId
+                    ]
+                )
+            }
+        }
+        
+        group.notify(queue: .main) {
+            print("📱 🚀 ✅ All circle creation push notifications processed")
         }
     }
     

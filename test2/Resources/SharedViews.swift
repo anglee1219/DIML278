@@ -280,7 +280,7 @@ struct ReactionButton: View {
                             HStack {
                                 Text("Reactions")
                                     .font(.custom("Fredoka-SemiBold", size: 20))
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(.black)
                                 Spacer()
                                 Button("Done") {
                                     withAnimation(.easeOut(duration: 0.2)) {
@@ -307,48 +307,50 @@ struct ReactionButton: View {
             
             // Custom overlay for comments instead of sheet to avoid navigation conflicts
             if showComments {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showComments = false
+                GeometryReader { geometry in
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showComments = false
+                            }
                         }
-                    }
-                    .overlay(
-                        VStack(spacing: 0) {
-                            // Header - Fixed at top
-                            HStack {
-                                Text("Comments")
-                                    .font(.custom("Fredoka-SemiBold", size: 20))
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                Button("Done") {
-                                    withAnimation(.easeOut(duration: 0.2)) {
-                                        showComments = false
+                        .overlay(
+                            VStack(spacing: 0) {
+                                // Header - Fixed at top
+                                HStack {
+                                    Text("Comments")
+                                        .font(.custom("Fredoka-SemiBold", size: 20))
+                                        .foregroundColor(.black)
+                                    Spacer()
+                                    Button("Done") {
+                                        withAnimation(.easeOut(duration: 0.2)) {
+                                            showComments = false
+                                        }
                                     }
+                                    .font(.custom("Fredoka-Medium", size: 16))
+                                    .foregroundColor(.blue)
                                 }
-                                .font(.custom("Fredoka-Medium", size: 16))
-                                .foregroundColor(.blue)
+                                .padding(.horizontal)
+                                .padding(.top)
+                                .padding(.bottom, 8)
+                                .background(Color.white) // Ensure header has white background
+                                
+                                // Scrollable Content
+                                ScrollView {
+                                    EntryInteractionView(entryId: entryId, entryStore: entryStore, groupMembers: groupMembers)
+                                        .padding(.bottom, 20) // Add bottom padding for better UX
+                                }
+                                .frame(maxHeight: .infinity) // Allow scroll view to expand
                             }
-                            .padding(.horizontal)
-                            .padding(.top)
-                            .padding(.bottom, 8)
-                            .background(Color.white) // Ensure header has white background
-                            
-                            // Scrollable Content
-                            ScrollView {
-                                EntryInteractionView(entryId: entryId, entryStore: entryStore)
-                                    .padding(.bottom, 20) // Add bottom padding for better UX
-                            }
-                            .frame(maxHeight: .infinity) // Allow scroll view to expand
-                        }
-                        .background(Color.white)
-                        .cornerRadius(16)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 50)
-                        .transition(.scale.combined(with: .opacity))
-                    )
-                    .zIndex(1000) // High z-index to ensure it appears on top
+                            .background(Color.white)
+                            .cornerRadius(16)
+                            .padding(.horizontal, geometry.size.width < 375 ? 12 : 20) // Adaptive horizontal padding
+                            .padding(.vertical, geometry.size.height < 700 ? 40 : 50) // Adaptive vertical padding for smaller screens
+                            .transition(.scale.combined(with: .opacity))
+                        )
+                }
+                .zIndex(1000) // High z-index to ensure it appears on top
             }
         }
         .sheet(isPresented: $showImagePicker) {
@@ -503,7 +505,7 @@ struct WhoReactedView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(getUserName(for: reaction.userId))
                                     .font(.custom("Fredoka-Medium", size: 16))
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(.black)
                                 Text("@\(getUserUsername(for: reaction.userId))")
                                     .font(.custom("Fredoka-Regular", size: 14))
                                     .foregroundColor(.gray)
@@ -639,6 +641,65 @@ struct ProfilePictureView: View {
     }
     
     private func loadProfileImage() {
+        // First try to get profile image URL from group members data
+        if let groupMembers = groupMembers,
+           let member = groupMembers.first(where: { $0.id == userId }),
+           let profileImageUrl = member.profileImageUrl,
+           !profileImageUrl.isEmpty,
+           let url = URL(string: profileImageUrl) {
+            
+            print("📸 ProfilePictureView: Loading profile image from group member data for user \(userId)")
+            
+            // Use URLSession to download from the stored URL
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    await MainActor.run {
+                        self.profileImage = UIImage(data: data)
+                        print("✅ ProfilePictureView: Successfully loaded profile image for user \(userId)")
+                    }
+                } catch {
+                    print("❌ ProfilePictureView: Failed to load profile image from URL for user \(userId): \(error)")
+                    // Fallback to Firebase Storage direct path as backup
+                    loadProfileImageFromStorage()
+                }
+            }
+        } else {
+            // Fallback to current user's stored profile image URL if it's the current user
+            let currentUserId = Auth.auth().currentUser?.uid ?? ""
+            if userId == currentUserId {
+                if let profileImageUrl = UserDefaults.standard.string(forKey: "profile_image_url_\(userId)"),
+                   !profileImageUrl.isEmpty,
+                   let url = URL(string: profileImageUrl) {
+                    
+                    print("📸 ProfilePictureView: Loading current user's profile image from UserDefaults URL")
+                    
+                    Task {
+                        do {
+                            let (data, _) = try await URLSession.shared.data(from: url)
+                            await MainActor.run {
+                                self.profileImage = UIImage(data: data)
+                                print("✅ ProfilePictureView: Successfully loaded current user's profile image")
+                            }
+                        } catch {
+                            print("❌ ProfilePictureView: Failed to load current user's profile image: \(error)")
+                            // Try cached image data as final fallback
+                            loadCachedProfileImage()
+                        }
+                    }
+                } else {
+                    // Try cached image data for current user
+                    loadCachedProfileImage()
+                }
+            } else {
+                // For other users, fetch their profile data from Firestore
+                print("📸 ProfilePictureView: Fetching profile data from Firestore for user \(userId)")
+                fetchUserProfileImage()
+            }
+        }
+    }
+    
+    private func loadProfileImageFromStorage() {
         Task {
             do {
                 let storage = Storage.storage()
@@ -651,9 +712,47 @@ struct ProfilePictureView: View {
                 
                 await MainActor.run {
                     self.profileImage = UIImage(data: imageData)
+                    print("✅ ProfilePictureView: Loaded profile image from Storage for user \(userId)")
                 }
             } catch {
-                print("Failed to load profile image for user \(userId): \(error)")
+                print("❌ ProfilePictureView: Failed to load profile image from Storage for user \(userId): \(error)")
+            }
+        }
+    }
+    
+    private func loadCachedProfileImage() {
+        if let cachedImageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(userId)"),
+           let cachedImage = UIImage(data: cachedImageData) {
+            print("✅ ProfilePictureView: Loaded cached profile image for user \(userId)")
+            self.profileImage = cachedImage
+        } else {
+            print("📸 ProfilePictureView: No cached image found for user \(userId), using initials")
+        }
+    }
+    
+    private func fetchUserProfileImage() {
+        Task {
+            do {
+                let db = Firestore.firestore()
+                let document = try await db.collection("users").document(userId).getDocument()
+                
+                guard let data = document.data(),
+                      let profileImageUrl = data["profileImageURL"] as? String,
+                      !profileImageUrl.isEmpty,
+                      let url = URL(string: profileImageUrl) else {
+                    print("📸 ProfilePictureView: No profile image URL found in Firestore for user \(userId)")
+                    return
+                }
+                
+                print("📸 ProfilePictureView: Found profile image URL in Firestore for user \(userId)")
+                
+                let (imageData, _) = try await URLSession.shared.data(from: url)
+                await MainActor.run {
+                    self.profileImage = UIImage(data: imageData)
+                    print("✅ ProfilePictureView: Successfully loaded profile image from Firestore URL for user \(userId)")
+                }
+            } catch {
+                print("❌ ProfilePictureView: Failed to fetch profile image from Firestore for user \(userId): \(error)")
             }
         }
     }

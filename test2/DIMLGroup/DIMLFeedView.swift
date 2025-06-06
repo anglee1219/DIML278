@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import FirebaseStorage
 import FirebaseAuth
+import FirebaseFirestore
 
 // Seeded random number generator for consistent daily prompts
 struct SeededRandomNumberGenerator: RandomNumberGenerator {
@@ -184,16 +185,113 @@ struct DIMLFeedView: View {
         showError = true
     }
     
+    private func sendNewPostNotifications() async {
+        print("📱 === SENDING NEW POST NOTIFICATIONS ===")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid,
+              let influencerName = group.members.first(where: { $0.id == currentUserId })?.name else {
+            print("❌ Could not get current user info for notifications")
+            return
+        }
+        
+        print("📱 Current influencer: \(influencerName) (ID: \(currentUserId))")
+        
+        // Get all circle members except the influencer (current user)
+        let otherMembers = group.members.filter { $0.id != currentUserId }
+        
+        print("📱 Total circle members: \(group.members.count)")
+        print("📱 Other members to notify: \(otherMembers.count)")
+        
+        // Debug: Print all members
+        print("📱 📋 All circle members:")
+        for (index, member) in group.members.enumerated() {
+            let isCurrentUser = member.id == currentUserId
+            print("📱 📋 [\(index + 1)] \(member.name) (ID: \(member.id)) - Current user: \(isCurrentUser)")
+        }
+        
+        print("📱 📋 Other members to notify:")
+        for (index, member) in otherMembers.enumerated() {
+            print("📱 📋 [\(index + 1)] \(member.name) (ID: \(member.id))")
+        }
+        
+        guard !otherMembers.isEmpty else {
+            print("📱 ℹ️ No other members to notify - user might be the only member")
+            return
+        }
+        
+        let db = Firestore.firestore()
+        
+        // Send notification to each other member
+        for member in otherMembers {
+            print("📱 📤 Sending notification to: \(member.name) (ID: \(member.id))")
+            
+            do {
+                // Get member's FCM token
+                let userDoc = try await db.collection("users").document(member.id).getDocument()
+                guard let userData = userDoc.data(),
+                      let fcmToken = userData["fcmToken"] as? String else {
+                    print("⚠️ No FCM token found for user \(member.name)")
+                    continue
+                }
+                
+                // Send FCM push notification
+                await sendCirclePostNotification(
+                    token: fcmToken,
+                    influencerName: influencerName,
+                    circleName: group.name,
+                    targetUserId: member.id
+                )
+                
+            } catch {
+                print("❌ Error getting FCM token for \(member.name): \(error.localizedDescription)")
+            }
+        }
+        
+        print("📱 === NEW POST NOTIFICATIONS COMPLETE ===")
+    }
+    
+    private func sendCirclePostNotification(token: String, influencerName: String, circleName: String, targetUserId: String) async {
+        print("📱 Sending FCM notification for new circle post...")
+        
+        // Create notification request for Cloud Function
+        let notificationRequest: [String: Any] = [
+            "fcmToken": token,
+            "title": "📷 New DIML Post",
+            "body": "\(influencerName) just shared their day in \(circleName)!",
+            "data": [
+                "type": "diml_upload",
+                "groupId": group.id,
+                "groupName": group.name,
+                "uploaderName": influencerName,
+                "prompt": currentPrompt,
+                "targetUserId": targetUserId
+            ],
+            "timestamp": FieldValue.serverTimestamp()
+        ]
+        
+        do {
+            let db = Firestore.firestore()
+            _ = try await db.collection("notificationRequests").addDocument(data: notificationRequest)
+            print("✅ Circle post notification queued via Cloud Function")
+        } catch {
+            print("❌ Error queuing circle post notification: \(error.localizedDescription)")
+        }
+    }
+    
     private func uploadImage(_ image: UIImage) {
-        print("Starting image upload...")
+        print("📤 === STARTING IMAGE UPLOAD ===")
+        print("📤 Current user ID: \(Auth.auth().currentUser?.uid ?? "none")")
+        print("📤 Group: \(group.name)")
+        print("📤 Group members: \(group.members.count)")
+        
         isUploading = true
         
         Task {
             do {
                 let imagePath = "diml_images/\(UUID().uuidString).jpg"
-                print("Uploading to path: \(imagePath)")
+                print("📤 Uploading to path: \(imagePath)")
                 let downloadURL = try await storage.uploadImage(image, path: imagePath)
-                print("Upload successful, URL: \(downloadURL)")
+                print("📤 Upload successful, URL: \(downloadURL)")
                 
                 let entry = DIMLEntry(
                     id: UUID().uuidString,
@@ -208,16 +306,17 @@ struct DIMLFeedView: View {
                 )
                 
                 await MainActor.run {
-                    print("Adding entry to store...")
+                    print("📤 Adding entry to store...")
                     entryStore.addEntry(entry)
                     capturedImage = nil
                     responseText = ""
                     capturedFrameSize = FrameSize.random
                     isUploading = false
-                    print("Upload process completed")
+                    print("📤 Entry added to store successfully - EntryStore will handle notifications")
                 }
+                
             } catch {
-                print("Upload error: \(error.localizedDescription)")
+                print("❌ Upload error: \(error.localizedDescription)")
                 await MainActor.run {
                     errorMessage = error.localizedDescription
                     showError = true
@@ -320,11 +419,13 @@ struct DIMLFeedView: View {
         switch group.promptFrequency {
         case .testing:
             timerInterval = 1.0 // Update every second for testing mode
+
         case .hourly:
             timerInterval = 60.0 // Update every minute for hourly prompts
         case .threeHours:
             timerInterval = 300.0 // Update every 5 minutes for 3-hour prompts  
         case .sixHours:
+        
             timerInterval = 600.0 // Update every 10 minutes for 6-hour prompts
         }
         
@@ -396,8 +497,8 @@ struct DIMLFeedView: View {
                                             Text("Add your response...")
                                                 .font(.caption)
                                                 .foregroundColor(.gray)
-                                            TextField("e.g., corepower w/ eliza", text: $responseText, axis: .vertical)
-                                                .font(.body)
+                                            TextField("What's on your mind?", text: $responseText, axis: .vertical)
+                                                .foregroundColor(.black)
                                                 .textFieldStyle(PlainTextFieldStyle())
                                                 .frame(minHeight: 40)
                                                 .onTapGesture {

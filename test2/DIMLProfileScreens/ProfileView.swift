@@ -164,7 +164,7 @@ struct ProfileView: View {
                                     .font(.system(size: 18))
                                 Spacer()
                             }
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 12)
                             .background(Color.mainBlue)

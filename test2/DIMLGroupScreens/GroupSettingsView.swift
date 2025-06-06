@@ -1,5 +1,7 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
+import UserNotifications
 import Foundation
 
 struct Friend: Identifiable, Hashable {
@@ -36,8 +38,13 @@ struct GroupSettingsView: View {
     @State private var isUpdatingSettings = false
     @State private var showClearEntriesAlert = false
     @State private var showLeaveGroupAlert = false
+
     
     private let promptScheduler = PromptScheduler.shared
+    
+    private var doneButtonColor: Color {
+        return selectedFriends.isEmpty ? .gray : Color(red: 0.733, green: 0.424, blue: 0.141)
+    }
     
     init(groupStore: GroupStore, entryStore: EntryStore, group: Group, isPresented: Binding<Bool>) {
         self.groupStore = groupStore
@@ -150,7 +157,7 @@ struct GroupSettingsView: View {
                         updateSettingsAndDismiss()
                     }
                 }
-                .foregroundColor(selectedFriends.isEmpty ? .gray : Color(red: 0.733, green: 0.424, blue: 0.141))
+                .foregroundColor(doneButtonColor)
             }
             .padding(.horizontal)
 
@@ -162,6 +169,7 @@ struct GroupSettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Prompt Frequency:")
                             .font(.custom("Markazi Text", size: 18))
+                            .foregroundColor(.black)
                         
                         Text("Currently sending \(selectedFrequency.numberOfPrompts) prompt\(selectedFrequency.numberOfPrompts == 1 ? "" : "s") during the influencer's day")
                             .font(.custom("Markazi Text", size: 14))
@@ -190,6 +198,7 @@ struct GroupSettingsView: View {
 
                         Text("Notifications")
                             .font(.custom("Markazi Text", size: 18))
+                            .foregroundColor(.black)
                             .padding(.top, 16)
                         
                         Text(isMuted ? "Circle notifications are disabled" : "Circle notifications are enabled")
@@ -217,12 +226,15 @@ struct GroupSettingsView: View {
                         // Clear Entries Section (for testing)
                         Text("Testing")
                             .font(.custom("Markazi Text", size: 18))
+                            .foregroundColor(.black)
                             .padding(.top, 16)
                         
                         Text("Clear all uploads and entries for testing (\(entryStore.entries.count) entries)")
                             .font(.custom("Markazi Text", size: 14))
                             .foregroundColor(.gray)
                             .padding(.bottom, 4)
+                        
+
                         
                         Button(action: {
                             showClearEntriesAlert = true
@@ -243,6 +255,7 @@ struct GroupSettingsView: View {
                         // Leave/Delete Group Section
                         Text("Circle Management")
                             .font(.custom("Markazi Text", size: 18))
+                            .foregroundColor(.black)
                             .padding(.top, 16)
                         
                         Text("Leave this circle")
@@ -336,6 +349,7 @@ struct GroupSettingsView: View {
                             Text("Circle Members")
                                 .font(.custom("Markazi Text", size: 20))
                                 .bold()
+                                .foregroundColor(.black)
                             
                             Text("(\(group.members.count))")
                                 .font(.custom("Markazi Text", size: 16))
@@ -345,9 +359,7 @@ struct GroupSettingsView: View {
                         
                         ForEach(group.members) { member in
                             HStack {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.2))
-                                    .frame(width: 50, height: 50)
+                                ProfilePictureView(userId: member.id, size: 50, groupMembers: group.members)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(member.name)
@@ -397,6 +409,7 @@ struct GroupSettingsView: View {
                             Text("Add Members")
                                 .font(.custom("Markazi Text", size: 20))
                                 .bold()
+                                .foregroundColor(.black)
                             
                             if !selectedFriends.isEmpty {
                                 Text("(\(selectedFriends.count) selected)")
@@ -455,16 +468,25 @@ struct GroupSettingsView: View {
                 // Convert selected friends to Users and add them to the group
                 let newMembers: [User] = selectedFriends.compactMap { friendId in
                     if let friend = friendsManager.friends.first(where: { $0.id == friendId }) {
-                        let username = friend.username ?? "@\(friend.name.lowercased().replacingOccurrences(of: " ", with: ""))"
+                        // Use the full friend data instead of creating a new User with minimal data
                         return User(
-                            id: UUID().uuidString,
+                            id: friend.id,
                             name: friend.name,
-                            username: username,
-                            role: .member
+                            username: friend.username,
+                            role: .member,
+                            profileImageUrl: friend.profileImageUrl
                         )
                     }
                     return nil
                 }
+                
+                // Send notifications to newly added members before updating the group
+                sendMemberAddedNotifications(
+                    groupName: group.name,
+                    adderName: SharedProfileViewModel.shared.name,
+                    addedMembers: newMembers,
+                    groupId: group.id
+                )
                 
                 // Add new members to the group
                 var updatedGroup = group
@@ -533,11 +555,149 @@ struct GroupSettingsView: View {
                 FriendProfileView(user: friend)
             }
         }
+
         .onAppear {
             friendsManager.setupListeners()
         }
     }
+    
+    // MARK: - Member Added Notifications
+    
+    private func sendMemberAddedNotifications(groupName: String, adderName: String, addedMembers: [User], groupId: String) {
+        print("📱 👥 === SENDING MEMBER ADDED NOTIFICATIONS ===")
+        print("📱 👥 Circle: \(groupName)")
+        print("📱 👥 Adder: \(adderName)")
+        print("📱 👥 Added members: \(addedMembers.count)")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("📱 👥 ❌ No current user for member added notifications")
+            return
+        }
+        
+        print("📱 👥 Adder ID (should NOT get notification): \(currentUserId)")
+        
+        // Filter out the current user (adder) from notifications
+        let membersToNotify = addedMembers.filter { $0.id != currentUserId }
+        
+        print("📱 👥 📋 Added members to notify:")
+        for (index, member) in membersToNotify.enumerated() {
+            print("📱 👥 📋 [\(index + 1)] \(member.name) (ID: \(member.id))")
+        }
+        
+        guard !membersToNotify.isEmpty else {
+            print("📱 👥 ℹ️ No added members to notify (might be adding self)")
+            return
+        }
+        
+        // Send both local and FCM notifications to added members
+        Task {
+            print("📱 👥 🚀 Sending notifications to \(membersToNotify.count) added members...")
+            
+            // 1. Send local notifications first
+            for (index, member) in membersToNotify.enumerated() {
+                print("📱 👥 🔔 [\(index + 1)] Creating LOCAL notification for \(member.name)")
+                
+                let content = UNMutableNotificationContent()
+                content.title = "👥 Added to Circle!"
+                content.body = "\(adderName) added you to '\(groupName)'"
+                content.sound = .default
+                content.badge = 1
+                
+                // Custom data for handling the tap
+                content.userInfo = [
+                    "type": "member_added",
+                    "groupId": groupId,
+                    "groupName": groupName,
+                    "adderName": adderName,
+                    "addedUserId": member.id
+                ]
+                
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+                let identifier = "member_added_local_\(groupId)_\(Date().timeIntervalSince1970)_\(member.id)"
+                
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                
+                do {
+                    try await UNUserNotificationCenter.current().add(request)
+                    print("📱 👥 ✅ LOCAL member added notification sent to \(member.name)")
+                } catch {
+                    print("📱 👥 ❌ Error sending LOCAL member added notification to \(member.name): \(error)")
+                }
+            }
+            
+            // 2. Send FCM push notifications
+            await sendMemberAddedFCMNotifications(
+                groupName: groupName,
+                adderName: adderName,
+                addedMembers: membersToNotify,
+                groupId: groupId
+            )
+            
+            print("📱 👥 === MEMBER ADDED NOTIFICATIONS COMPLETE ===")
+        }
+    }
+    
+    private func sendMemberAddedFCMNotifications(groupName: String, adderName: String, addedMembers: [User], groupId: String) async {
+        print("📱 👥 ☁️ === SENDING FCM NOTIFICATIONS FOR MEMBER ADDED ===")
+        
+        let db = Firestore.firestore()
+        
+        for member in addedMembers {
+            print("📱 👥 📤 Sending FCM notification to: \(member.name) (ID: \(member.id))")
+            
+            do {
+                // Get member's FCM token
+                let userDoc = try await db.collection("users").document(member.id).getDocument()
+                guard let userData = userDoc.data(),
+                      let fcmToken = userData["fcmToken"] as? String else {
+                    print("📱 👥 ⚠️ No FCM token found for user \(member.name)")
+                    continue
+                }
+                
+                // Send FCM push notification via Cloud Function
+                await sendMemberAddedCloudFunctionNotification(
+                    token: fcmToken,
+                    groupName: groupName,
+                    adderName: adderName,
+                    targetUserId: member.id,
+                    groupId: groupId
+                )
+                
+            } catch {
+                print("📱 👥 ❌ Error getting FCM token for \(member.name): \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private func sendMemberAddedCloudFunctionNotification(token: String, groupName: String, adderName: String, targetUserId: String, groupId: String) async {
+        print("📱 👥 ☁️ Sending FCM notification for member added...")
+        
+        // Create notification request for Cloud Function
+        let notificationRequest: [String: Any] = [
+            "fcmToken": token,
+            "title": "👥 Added to Circle!",
+            "body": "\(adderName) added you to '\(groupName)'",
+            "data": [
+                "type": "member_added",
+                "groupId": groupId,
+                "groupName": groupName,
+                "adderName": adderName,
+                "targetUserId": targetUserId
+            ],
+            "timestamp": FieldValue.serverTimestamp()
+        ]
+        
+        do {
+            let db = Firestore.firestore()
+            _ = try await db.collection("notificationRequests").addDocument(data: notificationRequest)
+            print("📱 👥 ✅ Member added notification queued via Cloud Function for \(targetUserId)")
+        } catch {
+            print("📱 👥 ❌ Error queuing member added notification: \(error.localizedDescription)")
+        }
+    }
 }
+
+
 
 struct FriendCell: View {
     let friend: User
@@ -548,26 +708,12 @@ struct FriendCell: View {
         Button(action: onTap) {
             VStack {
                 ZStack {
-                    // Profile image with AsyncImage
-                    AsyncImage(url: URL(string: friend.profileImageUrl ?? "")) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .overlay(
-                                Text(friend.name.prefix(1).uppercased())
-                                    .font(.system(size: 24, weight: .semibold, design: .rounded))
-                                    .foregroundColor(.white)
-                            )
-                    }
-                    .frame(width: 80, height: 80)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white, lineWidth: 3)
-                    )
+                    // Profile image with ProfilePictureView
+                    ProfilePictureView(userId: friend.id, size: 80, groupMembers: nil)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white, lineWidth: 3)
+                        )
                     
                     // Selection overlay
                     if isSelected {
@@ -633,6 +779,8 @@ struct GroupSettingsView_Previews: PreviewProvider {
     let mockGroup = Group(id: UUID().uuidString, name: "Sample Group", promptFrequency: .sixHours, notificationsMuted: false)
     GroupSettingsView(groupStore: GroupStore(), entryStore: EntryStore(groupId: mockGroup.id), group: mockGroup, isPresented: .constant(true))
 }
+
+
 
 //
 //  GroupSettingsView.swift

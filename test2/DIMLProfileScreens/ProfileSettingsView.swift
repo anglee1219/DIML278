@@ -46,12 +46,14 @@ struct ProfileSettingsView: View {
                     } label: {
                         SettingsRow(icon: "gearshape", label: "Account and Privacy")
                     }
+                    .listRowBackground(Color(red: 1, green: 0.988, blue: 0.929))
 
                     NavigationLink {
                         Text("Invite a Friend")
                     } label: {
                         SettingsRow(icon: "person.crop.circle.badge.plus", label: "Invite a Friend")
                     }
+                    .listRowBackground(Color(red: 1, green: 0.988, blue: 0.929))
 
                     Button(action: {
                         print("🔴 Log out button tapped")
@@ -68,6 +70,7 @@ struct ProfileSettingsView: View {
                     }) {
                         SettingsRow(icon: "arrow.backward.square", label: "Log out", isDestructive: true, showChevron: false)
                     }
+                    .listRowBackground(Color(red: 1, green: 0.988, blue: 0.929))
                 }
                 .listStyle(PlainListStyle())
             }
@@ -92,7 +95,7 @@ struct SettingsRow: View {
 
             Text(label)
                 .font(.custom("Markazi Text", size: 20))
-                .foregroundColor(isDestructive ? .red : Color(red: 0.157, green: 0.212, blue: 0.094))
+                .foregroundColor(isDestructive ? .red : .black)
 
             Spacer()
 

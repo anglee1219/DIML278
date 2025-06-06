@@ -1,6 +1,8 @@
 import SwiftUI
 import FirebaseAuth
 import Foundation
+import FirebaseFirestore
+import UserNotifications
 /* Initial Create Circle Screen
 struct CreateGroupView: View {
     var onGroupCreated: (Group) -> Void
@@ -132,13 +134,47 @@ struct CreateGroupView: View {
                             role: .member  // Start everyone as a member
                         )
                         
-                        // Create array with all members including current user
-                        var groupMembers = newMembers.map { member in
-                            let updatedMember = member
-                            updatedMember.role = .member
-                            return updatedMember
+                        // Create array with all members including current user, ensuring full profile data
+                        var groupMembers: [User] = []
+                        
+                        // Add selected friends with full profile data from FriendsManager
+                        for selectedMember in newMembers {
+                            // Find the full friend data from FriendsManager to get profile image URL
+                            if let fullFriendData = friendsManager.friends.first(where: { $0.id == selectedMember.id }) {
+                                groupMembers.append(User(
+                                    id: fullFriendData.id,
+                                    name: fullFriendData.name,
+                                    username: fullFriendData.username,
+                                    role: .member,
+                                    profileImageUrl: fullFriendData.profileImageUrl
+                                ))
+                            } else {
+                                // Fallback to the basic data if not found in friends manager
+                                groupMembers.append(User(
+                                    id: selectedMember.id,
+                                    name: selectedMember.name,
+                                    username: selectedMember.username,
+                                    role: .member,
+                                    profileImageUrl: selectedMember.profileImageUrl
+                                ))
+                            }
                         }
-                        groupMembers.append(currentUser)
+                        
+                        // Add current user with their profile data
+                        let currentUserEnhanced = User(
+                            id: currentUser.id,
+                            name: currentUser.name,
+                            username: currentUser.username,
+                            role: currentUser.role,
+                            profileImageUrl: UserDefaults.standard.string(forKey: "profile_image_url_\(Auth.auth().currentUser?.uid ?? "")"),
+                            pronouns: SharedProfileViewModel.shared.pronouns,
+                            zodiacSign: SharedProfileViewModel.shared.zodiac,
+                            location: SharedProfileViewModel.shared.location,
+                            school: SharedProfileViewModel.shared.school,
+                            interests: SharedProfileViewModel.shared.interests
+                        )
+                        
+                        groupMembers.append(currentUserEnhanced)
                         
                         // Randomly select an influencer from ALL members
                         let randomIndex = Int.random(in: 0..<groupMembers.count)
@@ -148,7 +184,7 @@ struct CreateGroupView: View {
                         groupMembers[randomIndex].role = .influencer
                         
                         // Make the current user an admin
-                        if let adminIndex = groupMembers.firstIndex(where: { $0.id == currentUser.id }) {
+                        if let adminIndex = groupMembers.firstIndex(where: { $0.id == currentUserEnhanced.id }) {
                             groupMembers[adminIndex].role = .admin
                         }
                         
@@ -161,6 +197,15 @@ struct CreateGroupView: View {
                             promptFrequency: .sixHours,
                             notificationsMuted: false
                         )
+                        
+                        // Send notifications to added members before creating the group
+                        sendCircleCreationNotifications(
+                            groupName: groupName,
+                            creatorName: SharedProfileViewModel.shared.name,
+                            addedMembers: newMembers, // Only the friends that were added, not the creator
+                            groupId: newGroup.id
+                        )
+                        
                         onGroupCreated(newGroup)
                         dismiss()
                     }
@@ -173,6 +218,7 @@ struct CreateGroupView: View {
                 // MARK: - Group Name Input
                 TextField("Name Your Circle", text: $groupName)
                     .font(.custom("Markazi Text", size: 20))
+                    .foregroundColor(.black)
                     .multilineTextAlignment(.center)
                     .padding(.vertical, 10)
                     .overlay(
@@ -348,6 +394,141 @@ struct CreateGroupView: View {
         .onAppear {
             // Load friends data when view appears
             friendsManager.setupListeners()
+        }
+    }
+    
+    // MARK: - Circle Creation Notifications
+    
+    private func sendCircleCreationNotifications(groupName: String, creatorName: String, addedMembers: [User], groupId: String) {
+        print("📱 🎉 === SENDING CIRCLE CREATION NOTIFICATIONS ===")
+        print("📱 🎉 Circle name: \(groupName)")
+        print("📱 🎉 Creator: \(creatorName)")
+        print("📱 🎉 Added members: \(addedMembers.count)")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("📱 🎉 ❌ No current user for circle creation notifications")
+            return
+        }
+        
+        print("📱 🎉 Creator ID (should NOT get notification): \(currentUserId)")
+        
+        // Filter out the creator from notifications (they shouldn't get notified about creating their own circle)
+        let membersToNotify = addedMembers.filter { $0.id != currentUserId }
+        
+        print("📱 🎉 📋 Added members to notify:")
+        for (index, member) in membersToNotify.enumerated() {
+            print("📱 🎉 📋 [\(index + 1)] \(member.name) (ID: \(member.id))")
+        }
+        
+        guard !membersToNotify.isEmpty else {
+            print("📱 🎉 ℹ️ No added members to notify about circle creation")
+            return
+        }
+        
+        // Send both local and FCM notifications to added members
+        Task {
+            print("📱 🎉 🚀 Sending notifications to \(membersToNotify.count) added members...")
+            
+            // 1. Send local notifications first
+            for (index, member) in membersToNotify.enumerated() {
+                print("📱 🎉 🔔 [\(index + 1)] Creating LOCAL notification for \(member.name)")
+                
+                let content = UNMutableNotificationContent()
+                content.title = "🎉 Added to New Circle!"
+                content.body = "\(creatorName) added you to '\(groupName)'"
+                content.sound = .default
+                content.badge = 1
+                
+                // Custom data for handling the tap
+                content.userInfo = [
+                    "type": "circle_created",
+                    "groupId": groupId,
+                    "groupName": groupName,
+                    "creatorName": creatorName,
+                    "addedUserId": member.id
+                ]
+                
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+                let identifier = "circle_created_local_\(groupId)_\(Date().timeIntervalSince1970)_\(member.id)"
+                
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                
+                do {
+                    try await UNUserNotificationCenter.current().add(request)
+                    print("📱 🎉 ✅ LOCAL circle creation notification sent to \(member.name)")
+                } catch {
+                    print("📱 🎉 ❌ Error sending LOCAL circle creation notification to \(member.name): \(error)")
+                }
+            }
+            
+            // 2. Send FCM push notifications
+            await sendCircleCreationFCMNotifications(
+                groupName: groupName,
+                creatorName: creatorName,
+                addedMembers: membersToNotify,
+                groupId: groupId
+            )
+            
+            print("📱 🎉 === CIRCLE CREATION NOTIFICATIONS COMPLETE ===")
+        }
+    }
+    
+    private func sendCircleCreationFCMNotifications(groupName: String, creatorName: String, addedMembers: [User], groupId: String) async {
+        print("📱 🎉 ☁️ === SENDING FCM NOTIFICATIONS FOR CIRCLE CREATION ===")
+        
+        let db = Firestore.firestore()
+        
+        for member in addedMembers {
+            print("📱 🎉 📤 Sending FCM notification to: \(member.name) (ID: \(member.id))")
+            
+            do {
+                // Get member's FCM token
+                let userDoc = try await db.collection("users").document(member.id).getDocument()
+                guard let userData = userDoc.data(),
+                      let fcmToken = userData["fcmToken"] as? String else {
+                    print("📱 🎉 ⚠️ No FCM token found for user \(member.name)")
+                    continue
+                }
+                
+                // Send FCM push notification via Cloud Function
+                await sendCircleCreationCloudFunctionNotification(
+                    token: fcmToken,
+                    groupName: groupName,
+                    creatorName: creatorName,
+                    targetUserId: member.id,
+                    groupId: groupId
+                )
+                
+            } catch {
+                print("📱 🎉 ❌ Error getting FCM token for \(member.name): \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private func sendCircleCreationCloudFunctionNotification(token: String, groupName: String, creatorName: String, targetUserId: String, groupId: String) async {
+        print("📱 🎉 ☁️ Sending FCM notification for circle creation...")
+        
+        // Create notification request for Cloud Function
+        let notificationRequest: [String: Any] = [
+            "fcmToken": token,
+            "title": "🎉 Added to New Circle!",
+            "body": "\(creatorName) added you to '\(groupName)'",
+            "data": [
+                "type": "circle_created",
+                "groupId": groupId,
+                "groupName": groupName,
+                "creatorName": creatorName,
+                "targetUserId": targetUserId
+            ],
+            "timestamp": FieldValue.serverTimestamp()
+        ]
+        
+        do {
+            let db = Firestore.firestore()
+            _ = try await db.collection("notificationRequests").addDocument(data: notificationRequest)
+            print("📱 🎉 ✅ Circle creation notification queued via Cloud Function for \(targetUserId)")
+        } catch {
+            print("📱 🎉 ❌ Error queuing circle creation notification: \(error.localizedDescription)")
         }
     }
 }

@@ -17,7 +17,7 @@ struct BirthdayEntryView: View {
     private var canProceed: Bool {
         let calendar = Calendar.current
         let age = calendar.dateComponents([.year], from: birthDate, to: Date()).year ?? 0
-        return age >= 13
+        return age >= 18
     }
     
     var body: some View {
@@ -39,7 +39,7 @@ struct BirthdayEntryView: View {
                         .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
                         .padding(.bottom, 10)
                     
-                    Text("You must be at least 13 years old to use DIML")
+                    Text("You must be at least 18 years old to use DIML")
                         .font(.custom("Markazi Text", size: 18))
                         .foregroundColor(.gray)
                     
@@ -70,7 +70,7 @@ struct BirthdayEntryView: View {
                     }
                     
                     if !canProceed {
-                        Text("You must be at least 13 years old")
+                        Text("You must be at least 18 years old")
                             .font(.custom("Markazi Text", size: 16))
                             .foregroundColor(.red)
                     }

@@ -10,11 +10,9 @@ struct BioEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showLocationSearch = false
     @State private var navigateToNext = false
-    @State private var navigateBack = false
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
-    @State private var shouldStartTutorial = false
     
     private func saveProfileToFirebase() {
         print("🎯 saveProfileToFirebase() called")
@@ -108,21 +106,30 @@ struct BioEntryView: View {
                     switch result {
                     case .success:
                         print("✅ Successfully completed sign up")
-                        print("🔥 Setting isLoading = false, isCompletingProfile = false, isAuthenticated = true")
+                        print("🔥 Setting isLoading = false and navigating to main app")
+                        
                         // First set loading to false
                         self.isLoading = false
                         
-                        // Check if user should see tutorial
-                        if self.tutorialManager.shouldShowTutorial(for: "onboarding") {
-                            self.shouldStartTutorial = true
-                        }
+                        // Reset tutorial for new users to ensure it shows
+                        self.tutorialManager.resetTutorial(for: "onboarding")
+                        print("🎯 BioEntry: Reset tutorial for new user")
                         
-                        // Then update auth state - let the main app handle navigation
+                        // Navigate to main app - tutorial will start in GroupListView
+                        print("🎯 BioEntry: About to navigate to main app")
+                        print("🎯 BioEntry: Before - isCompletingProfile: \(self.authManager.isCompletingProfile), isAuthenticated: \(self.authManager.isAuthenticated)")
+                        
                         withAnimation {
                             self.authManager.isCompletingProfile = false
                             self.authManager.isAuthenticated = true
                         }
-                        print("🔥 Auth state updated - isCompletingProfile: \(self.authManager.isCompletingProfile), isAuthenticated: \(self.authManager.isAuthenticated)")
+                        
+                        print("🎯 BioEntry: After - isCompletingProfile: \(self.authManager.isCompletingProfile), isAuthenticated: \(self.authManager.isAuthenticated)")
+                        
+                        // Double-check authentication state after a brief delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            print("🎯 BioEntry: Final check - isCompletingProfile: \(self.authManager.isCompletingProfile), isAuthenticated: \(self.authManager.isAuthenticated)")
+                        }
                         
                     case .failure(let error):
                         print("❌ Failed to complete sign up: \(error.localizedDescription)")
@@ -130,6 +137,19 @@ struct BioEntryView: View {
                         self.showAlert = true
                         self.isLoading = false
                     }
+                }
+            }
+        }
+        
+        // Add a timeout mechanism - force navigation after 10 seconds if nothing happens
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+            if self.isLoading {
+                print("🎯 BioEntry: Timeout reached - forcing navigation to main app")
+                self.isLoading = false
+                self.tutorialManager.resetTutorial(for: "onboarding")
+                withAnimation {
+                    self.authManager.isCompletingProfile = false
+                    self.authManager.isAuthenticated = true
                 }
             }
         }
@@ -178,17 +198,18 @@ struct BioEntryView: View {
                     
                     TextField("School", text: $viewModel.school)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .foregroundColor(.black)
                         .padding(.horizontal)
                     
                     TextField("Interests (separated by commas)", text: $viewModel.interests)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .foregroundColor(.black)
                         .padding(.horizontal)
-                    
-                    NavigationLink(destination: BirthdayEntryView(), isActive: $navigateBack) { EmptyView() }
                     
                     HStack {
                         Button(action: {
-                            navigateBack = true
+                            // Dismiss this view to go back to the previous screen
+                            dismiss()
                         }) {
                             Image(systemName: "arrow.left.circle.fill")
                                 .resizable()
@@ -199,6 +220,7 @@ struct BioEntryView: View {
                         Spacer()
                         
                         Button(action: {
+                            print("🎯 BioEntry: Check button pressed!")
                             saveProfileToFirebase()
                         }) {
                             if isLoading {
@@ -237,16 +259,6 @@ struct BioEntryView: View {
                 message: Text(alertMessage),
                 dismissButton: .default(Text("OK"))
             )
-        }
-        .tutorialOverlay(tutorialManager: tutorialManager, tutorialID: "onboarding")
-        .onChange(of: shouldStartTutorial) { shouldStart in
-            if shouldStart {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    let steps = TutorialManager.createOnboardingTutorial()
-                    tutorialManager.startTutorial(steps: steps)
-                    shouldStartTutorial = false
-                }
-            }
         }
         .navigationBarBackButtonHidden(true)
     }
@@ -326,7 +338,7 @@ struct SearchBar: View {
             
             TextField("Search location...", text: $text)
                 .font(.custom("Markazi Text", size: 20))
-                .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))
+                .foregroundColor(.primary)
         }
         .padding(8)
         .background(Color(.systemGray6))

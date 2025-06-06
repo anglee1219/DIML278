@@ -40,25 +40,21 @@ struct TutorialTriggerView: View {
                             tutorialManager.startTutorial(steps: steps)
                         }
                         
-                        TutorialOptionCard(
-                            icon: "person.3.fill",
-                            title: "Groups & Friends",
-                            description: "Understand how groups work and the influencer system",
-                            completed: !tutorialManager.shouldShowTutorial(for: "groups")
-                        ) {
-                            let steps = TutorialManager.createGroupTutorial()
-                            tutorialManager.startTutorial(steps: steps)
+                        // Note: Additional tutorials can be added here in the future
+                        VStack(spacing: 8) {
+                            Text("More tutorials coming soon!")
+                                .font(.custom("Fredoka-Medium", size: 16))
+                                .foregroundColor(.gray)
+                            
+                            Text("We're working on additional tutorials for groups, memory capsule, and other features.")
+                                .font(.custom("Fredoka-Regular", size: 14))
+                                .foregroundColor(.gray.opacity(0.8))
+                                .multilineTextAlignment(.center)
                         }
-                        
-                        TutorialOptionCard(
-                            icon: "photo.stack.fill",
-                            title: "Memory Capsule",
-                            description: "Explore your personal collection of shared moments",
-                            completed: !tutorialManager.shouldShowTutorial(for: "capsule")
-                        ) {
-                            let steps = TutorialManager.createCapsuleTutorial()
-                            tutorialManager.startTutorial(steps: steps)
-                        }
+                        .padding(.vertical, 20)
+                        .padding(.horizontal, 16)
+                        .background(Color.gray.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         
                         // Reset all tutorials
                         Button(action: {
@@ -67,7 +63,7 @@ struct TutorialTriggerView: View {
                             HStack {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.title3)
-                                Text("Reset All Tutorials")
+                                Text("Reset Tutorial")
                                     .font(.custom("Fredoka-Medium", size: 16))
                             }
                             .foregroundColor(.red)
@@ -101,7 +97,7 @@ struct TutorialTriggerView: View {
     }
     
     private func resetAllTutorials() {
-        let tutorialIDs = ["onboarding", "groups", "capsule"]
+        let tutorialIDs = ["onboarding"]
         for id in tutorialIDs {
             UserDefaults.standard.removeObject(forKey: "tutorial_completed_\(id)")
         }

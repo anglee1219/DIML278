@@ -122,6 +122,14 @@ struct AddFriendsView: View {
                                                         print("🔄 Accepting friend request from: \(request.from)")
                                                         try await friendRequestManager.acceptFriendRequest(from: request.from)
                                                         print("✅ Successfully accepted friend request from: \(request.from)")
+                                                        
+                                                        // Notify GroupListView of friend request activity
+                                                        await MainActor.run {
+                                                            NotificationCenter.default.post(
+                                                                name: NSNotification.Name("FriendRequestAccepted"),
+                                                                object: nil
+                                                            )
+                                                        }
                                                     } catch {
                                                         print("❌ Failed to accept friend request: \(error)")
                                                         await MainActor.run {
@@ -137,6 +145,14 @@ struct AddFriendsView: View {
                                                         print("🔄 Rejecting friend request from: \(request.from)")
                                                         try await friendRequestManager.rejectFriendRequest(from: request.from)
                                                         print("✅ Successfully rejected friend request from: \(request.from)")
+                                                        
+                                                        // Notify GroupListView of friend request activity
+                                                        await MainActor.run {
+                                                            NotificationCenter.default.post(
+                                                                name: NSNotification.Name("FriendRequestDeclined"),
+                                                                object: nil
+                                                            )
+                                                        }
                                                     } catch {
                                                         print("❌ Failed to reject friend request: \(error)")
                                                         await MainActor.run {
@@ -275,7 +291,7 @@ struct AddFriendsView: View {
                                         .foregroundColor(mainYellow)
                                     
                                     if searchText.isEmpty {
-                                        Text("Find new friends to connect with")
+                                        Text("Find new friends to connect with (\(friendsManager.suggestedUsers.count) available)")
                                             .font(.custom("Fredoka-Regular", size: 14))
                                             .foregroundColor(.gray)
                                     } else {
@@ -286,26 +302,56 @@ struct AddFriendsView: View {
                                 }
                                 
                                 Spacer()
+                                
+                                // Debug refresh button
+                                Button(action: {
+                                    print("🔄 Manual refresh button tapped")
+                                    friendsManager.forceReloadAll()
+                                }) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .foregroundColor(mainYellow)
+                                        .font(.title3)
+                                }
                             }
                             .padding(.horizontal)
                             
                             if filteredSuggestions.isEmpty {
                                 VStack(spacing: 12) {
-                                    Image(systemName: searchText.isEmpty ? "person.3" : "magnifyingglass")
-                                        .font(.system(size: 40))
+                                    Image(systemName: searchText.isEmpty ? "person.crop.circle.badge.plus" : "magnifyingglass")
+                                        .font(.system(size: 30))
                                         .foregroundColor(.gray.opacity(0.6))
                                     
-                                    Text(searchText.isEmpty ? "No suggestions available" : "No matches found")
-                                        .font(.custom("Fredoka-Medium", size: 16))
-                                        .foregroundColor(.gray)
-                                    
-                                    Text(searchText.isEmpty ? "Check back later for friend suggestions" : "Try different search terms or check spelling")
-                                        .font(.custom("Fredoka-Regular", size: 14))
-                                        .foregroundColor(.gray.opacity(0.8))
-                                        .multilineTextAlignment(.center)
+                                    if searchText.isEmpty {
+                                        Text("No new people to discover")
+                                            .font(.custom("Fredoka-Medium", size: 16))
+                                            .foregroundColor(.gray)
+                                        
+                                        VStack(spacing: 4) {
+                                            Text("Total users in database: \(friendsManager.suggestedUsers.count)")
+                                                .font(.custom("Fredoka-Regular", size: 12))
+                                                .foregroundColor(.gray.opacity(0.8))
+                                            
+                                            Text("Your friends: \(friendsManager.friends.count)")
+                                                .font(.custom("Fredoka-Regular", size: 12))
+                                                .foregroundColor(.gray.opacity(0.8))
+                                            
+                                            Text("Try the refresh button above to reload")
+                                                .font(.custom("Fredoka-Regular", size: 12))
+                                                .foregroundColor(mainYellow)
+                                                .padding(.top, 8)
+                                        }
+                                    } else {
+                                        Text("No people match \"\(searchText)\"")
+                                            .font(.custom("Fredoka-Medium", size: 16))
+                                            .foregroundColor(.gray)
+                                        
+                                        Text("Try a different search term")
+                                            .font(.custom("Fredoka-Regular", size: 14))
+                                            .foregroundColor(.gray.opacity(0.8))
+                                    }
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 40)
+                                .padding(.vertical, 30)
                                 .background(Color.white)
                                 .cornerRadius(20)
                                 .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
@@ -332,6 +378,10 @@ struct AddFriendsView: View {
                     .padding(.top, 16)
                 }
             }
+            .refreshable {
+                print("🔄 Pull-to-refresh triggered - reloading all friend data...")
+                friendsManager.refreshSuggestedUsers()
+            }
             .background(Color(red: 1, green: 0.989, blue: 0.93).ignoresSafeArea())
             .sheet(isPresented: $showFriendProfile) {
                 if let friend = selectedFriend {
@@ -354,6 +404,11 @@ struct AddFriendsView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(errorMessage)
+            }
+            .onAppear {
+                print("🔍 AddFriendsView appeared - refreshing friend data...")
+                // Force refresh friends and suggested users when view appears
+                friendsManager.refreshSuggestedUsers()
             }
         }
     }
@@ -533,7 +588,7 @@ struct PendingRequestRowView: View {
                         if !senderPronouns.isEmpty {
                             Text("(\(senderPronouns))")
                                 .font(.custom("Fredoka-Regular", size: 12))
-                                .foregroundColor(.gray)
+                                .foregroundColor(.black.opacity(0.6))
                         }
                     }
                     
@@ -550,10 +605,10 @@ struct PendingRequestRowView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "location.fill")
                                     .font(.caption)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.black.opacity(0.6))
                                 Text(senderLocation)
                                     .font(.custom("Fredoka-Regular", size: 12))
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.black.opacity(0.7))
                             }
                         }
                         
@@ -561,10 +616,10 @@ struct PendingRequestRowView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "graduationcap.fill")
                                     .font(.caption)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.black.opacity(0.6))
                                 Text(senderSchool)
                                     .font(.custom("Fredoka-Regular", size: 12))
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.black.opacity(0.7))
                             }
                         }
                     }
@@ -708,7 +763,7 @@ struct FriendRowView: View {
                     if let pronouns = displayUser.pronouns, !pronouns.isEmpty {
                         Text("(\(pronouns))")
                             .font(.custom("Fredoka-Regular", size: 12))
-                            .foregroundColor(.gray)
+                            .foregroundColor(.black.opacity(0.6))
                     }
                 }
 
@@ -725,10 +780,10 @@ struct FriendRowView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "location.fill")
                                 .font(.caption)
-                                .foregroundColor(.gray)
+                                .foregroundColor(.black.opacity(0.6))
                             Text(location)
                                 .font(.custom("Fredoka-Regular", size: 12))
-                                .foregroundColor(.gray)
+                                .foregroundColor(.black.opacity(0.7))
                         }
                     }
                     
@@ -736,10 +791,10 @@ struct FriendRowView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "graduationcap.fill")
                                 .font(.caption)
-                                .foregroundColor(.gray)
+                                .foregroundColor(.black.opacity(0.6))
                             Text(school)
                                 .font(.custom("Fredoka-Regular", size: 12))
-                                .foregroundColor(.gray)
+                                .foregroundColor(.black.opacity(0.7))
                         }
                     }
                 }

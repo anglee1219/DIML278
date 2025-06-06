@@ -83,6 +83,8 @@ struct GroupDetailView: View {
     @State private var hasNewPromptReadyForAnimation = false // NEW: Flag for delayed animation trigger
     @State private var isRefreshing = false // NEW: Show refresh indicator
     @State private var isActivelyViewingChat = false // NEW: Track if user is actively in this chat view
+    @State private var hasSeenCurrentPrompt = false // NEW: Track if user has seen the current prompt (for visual indicator)
+    @State private var pendingNewPrompt = "" // NEW: Store the new prompt generated during countdown until user returns
     
     // Notification handling states
     @State private var cameFromNotification = false
@@ -205,9 +207,13 @@ struct GroupDetailView: View {
         // Check if this is an image prompt (no input fields)
         isImagePrompt = config.fields.isEmpty
         
+        // Reset seen flag when a new prompt is loaded
+        hasSeenCurrentPrompt = false
+        
         print("🎯 Loaded daily prompt: '\(currentPrompt)'")
         print("🎯 Is image prompt: \(isImagePrompt)")
         print("🎯 Configuration stored for consistency")
+        print("🎯 hasSeenCurrentPrompt reset to: \(hasSeenCurrentPrompt)")
     }
     
     private func shouldShowNextPrompt() -> Bool {
@@ -699,11 +705,30 @@ struct GroupDetailView: View {
             return
         }
         
-        // Check if current prompt has already been completed
+        // Check if there's an available prompt to answer (same logic as prompt card)
         let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
-        if hasCompletedCurrentPrompt {
-            // Show alert that they've already completed this prompt
-            errorMessage = "You've already completed this prompt! Your next prompt will unlock in \(nextPromptCountdown.isEmpty ? "a few hours" : nextPromptCountdown)."
+        
+        // CRITICAL FIX: Also check timing to ensure prompt is actually unlocked
+        var isPromptAvailable = !hasCompletedCurrentPrompt && !currentPrompt.isEmpty
+        
+        if isPromptAvailable {
+            // Double-check with timing logic
+            if let nextPromptTime = calculateNextPromptTime() {
+                let now = Date()
+                let timeInterval = nextPromptTime.timeIntervalSince(now)
+                let isActuallyUnlocked = timeInterval <= 0
+                
+                print("📷 🔓 Camera timing check:")
+                print("📷 🔓 Time remaining: \(timeInterval) seconds")
+                print("📷 🔓 Is actually unlocked: \(isActuallyUnlocked)")
+                
+                isPromptAvailable = isActuallyUnlocked
+            }
+        }
+        
+        if !isPromptAvailable {
+            // Show alert that they need to wait for next prompt
+            errorMessage = "No prompt available to answer! Your next prompt will unlock in \(nextPromptCountdown.isEmpty ? "a few hours" : nextPromptCountdown)."
             showError = true
             return
         }
@@ -838,6 +863,7 @@ struct GroupDetailView: View {
             if !hasTriggeredUnlockForCurrentPrompt {
                 print("🎯 🎬 Setting flag for delayed prompt unlock animation")
                 hasTriggeredUnlockForCurrentPrompt = true
+                hasSeenCurrentPrompt = true // Mark that user will see this prompt
                 
                     // CRITICAL: Don't change currentPrompt here - preserve it for the "0s..." display
                     // Only generate the new prompt DURING the animation, not before
@@ -846,12 +872,14 @@ struct GroupDetailView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         print("🎯 🎬 NOW generating new prompt for animation")
                         
-                        // NOW generate the new prompt for the animation
-                        let newPrompt = self.generateUniquePrompt()
-                        print("🎯 🎬 Generated new prompt for animation: '\(newPrompt)'")
-                        
-                        // Store the new prompt but don't set currentPrompt yet
-                        // The animation will handle setting currentPrompt at the right time
+                                            // NOW generate the new prompt for the animation
+                    let newPrompt = self.generateUniquePrompt()
+                    print("🎯 🎬 Generated new prompt for animation: '\(newPrompt)'")
+                    
+                    // Store the new prompt but don't set currentPrompt yet
+                    // The animation will handle setting currentPrompt at the right time
+                    // Reset seen flag for the new prompt that will be set
+                    self.hasSeenCurrentPrompt = false
                     
                     // Send prompt unlock notification to influencer
                     print("📱 🔔 Sending prompt unlock notification for new prompt")
@@ -866,9 +894,11 @@ struct GroupDetailView: View {
                             self.triggerPromptUnlockAnimation(newPrompt: newPrompt)
                     } else {
                         print("🎯 🎬 User not actively viewing chat - animation will trigger when they enter")
-                            // Store for later animation when user enters
+                            // CRITICAL FIX: Don't change currentPrompt until user actually enters
+                            // Store the new prompt for when user returns
                             self.hasNewPromptReadyForAnimation = true
-                            self.currentPrompt = newPrompt // Set here for when user enters
+                            self.pendingNewPrompt = newPrompt
+                            print("🎯 🎬 Stored pendingNewPrompt: '\(newPrompt)' for later animation")
                         }
                     }
                 }
@@ -1005,6 +1035,7 @@ struct GroupDetailView: View {
                 print("🎯 Setting currentPrompt to newPrompt: '\(newPrompt)'")
                 currentPrompt = newPrompt
                 hasInteractedWithCurrentPrompt = false
+                hasSeenCurrentPrompt = true // Mark that user is seeing this prompt
                 
                 // Regenerate and store new configuration for consistency - but keep the prompt
                 print("🎯 Generating configuration for the new prompt...")
@@ -1079,7 +1110,7 @@ struct GroupDetailView: View {
             if let selectedEntry = selectedEntryForComments {
                 if #available(iOS 16.0, *) {
                     NavigationView {
-                        EntryInteractionView(entryId: selectedEntry.id, entryStore: store)
+                        EntryInteractionView(entryId: selectedEntry.id, entryStore: store, groupMembers: group.members)
                             .navigationTitle("Comments")
                             .navigationBarTitleDisplayMode(.inline)
                             .navigationBarItems(
@@ -1091,7 +1122,7 @@ struct GroupDetailView: View {
                     .presentationDetents([.medium, .large])
                 } else {
                     NavigationView {
-                        EntryInteractionView(entryId: selectedEntry.id, entryStore: store)
+                        EntryInteractionView(entryId: selectedEntry.id, entryStore: store, groupMembers: group.members)
                             .navigationTitle("Comments")
                             .navigationBarTitleDisplayMode(.inline)
                             .navigationBarItems(
@@ -1255,10 +1286,16 @@ struct GroupDetailView: View {
             if isInfluencer && hasNewPromptReadyForAnimation {
                 print("🔍 🎬 NEW PROMPT READY FOR ANIMATION DETECTED!")
                 print("🔍 🎬 Current prompt: '\(currentPrompt)'")
+                print("🔍 🎬 Pending new prompt: '\(pendingNewPrompt)'")
                 
-                // Store the current prompt before clearing the flag
-                let promptForAnimation = currentPrompt
-                hasNewPromptReadyForAnimation = false // Clear the flag
+                // Use the pending prompt for animation (generated during countdown)
+                let promptForAnimation = !pendingNewPrompt.isEmpty ? pendingNewPrompt : currentPrompt
+                print("🔍 🎬 Using prompt for animation: '\(promptForAnimation)'")
+                
+                // Clear the flags
+                hasNewPromptReadyForAnimation = false
+                pendingNewPrompt = "" // Clear the pending prompt
+                hasSeenCurrentPrompt = true // Mark that user will see this prompt
                 
                 // Show the prompt unlock feedback immediately
                 showNewPromptUnlockedFeedback = true
@@ -1278,6 +1315,55 @@ struct GroupDetailView: View {
                     }
                 }
             } else if isInfluencer {
+                // Check if there's an unlocked prompt that hasn't been answered (but user has left and returned)
+                let currentPromptCompleted = store.entries.contains { $0.prompt == currentPrompt }
+                if !currentPromptCompleted && !currentPrompt.isEmpty {
+                    print("🔍 🎬 CHECKING IF PROMPT IS ACTUALLY UNLOCKED...")
+                    print("🔍 🎬 Current prompt: '\(currentPrompt)'")
+                    
+                    // CRITICAL FIX: Only show prompt card if the prompt is ACTUALLY unlocked (timing check)
+                    guard let nextPromptTime = calculateNextPromptTime() else {
+                        print("🔍 🎬 ❌ Could not calculate next prompt time")
+                        return
+                    }
+                    
+                    let now = Date()
+                    let timeInterval = nextPromptTime.timeIntervalSince(now)
+                    let isActuallyUnlocked = timeInterval <= 0
+                    
+                    print("🔍 🎬 Next prompt time: \(nextPromptTime)")
+                    print("🔍 🎬 Current time: \(now)")
+                    print("🔍 🎬 Time remaining: \(timeInterval) seconds")
+                    print("🔍 🎬 Is actually unlocked: \(isActuallyUnlocked)")
+                    
+                    if isActuallyUnlocked {
+                        print("🔍 🎬 ✅ PROMPT IS TRULY UNLOCKED - Making accessible")
+                        // Only set prompt card states if truly unlocked
+                        showNewPromptCard = true
+                        hasUnlockedNewPrompt = true
+                        hasSeenCurrentPrompt = true
+                        
+                        // Show feedback if user previously saw this prompt
+                        if hasSeenCurrentPrompt {
+                            showNewPromptUnlockedFeedback = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                                showNewPromptUnlockedFeedback = false
+                            }
+                        }
+                        
+                        // Auto-scroll to the prompt (but no animation)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            print("🔄 Auto-scrolling to available prompt")
+                            shouldAutoScrollToPrompt = true
+                        }
+                    } else {
+                        print("🔍 🎬 ⏰ PROMPT IS STILL LOCKED - Keeping countdown display")
+                        // Make sure prompt card states are cleared for locked prompts
+                        showNewPromptCard = false
+                        hasUnlockedNewPrompt = false
+                        // Don't change hasSeenCurrentPrompt as user may have seen it before
+                    }
+                }
                     // Check if prompt changed (standard logic)
                 if currentPrompt != oldPrompt && !currentPrompt.isEmpty && !oldPrompt.isEmpty {
                         print("🔍 New prompt detected: '\(currentPrompt)', triggering animation")
@@ -1287,10 +1373,10 @@ struct GroupDetailView: View {
                 }
                 
                     // Auto-scroll to active prompt for influencers when main view appears
-                    let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
-                    print("🔄 Auto-scroll check: currentPrompt='\(currentPrompt)', hasCompleted=\(hasCompletedCurrentPrompt)")
+                    let isCurrentPromptCompleted = store.entries.contains { $0.prompt == currentPrompt }
+                    print("🔄 Auto-scroll check: currentPrompt='\(currentPrompt)', hasCompleted=\(isCurrentPromptCompleted)")
                 
-                if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
+                if !isCurrentPromptCompleted && !currentPrompt.isEmpty {
                         print("🔄 Scheduling auto-scroll to activePrompt in 1.0 seconds")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         print("🔄 Triggering auto-scroll...")
@@ -1332,9 +1418,11 @@ struct GroupDetailView: View {
                 animateCountdownRefresh = false
                 hasTriggeredUnlockForCurrentPrompt = false
                 hasNewPromptReadyForAnimation = false
+                pendingNewPrompt = "" // Clear pending prompt
                 showPromptCompletedFeedback = false
                 showNewPromptUnlockedFeedback = false
                 shouldAutoScrollToPrompt = false
+                // Note: Don't reset hasSeenCurrentPrompt here as we want to preserve it for when user returns
             }
             
             // Set active viewing flag to false
@@ -1426,11 +1514,15 @@ struct GroupDetailView: View {
                         .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: false), value: showNewPromptUnlockedFeedback)
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("🎉 New Prompt Unlocked!")
+                        // Check if this is a newly unlocked prompt or returning to unlocked prompt
+                        let hasCompleted = store.entries.contains { $0.prompt == currentPrompt }
+                        let isReturningToUnlocked = hasSeenCurrentPrompt && !hasCompleted && !showNewPromptCard
+                        
+                        Text(isReturningToUnlocked ? "💡 Prompt Ready!" : "🎉 New Prompt Unlocked!")
                             .font(.custom("Fredoka-Bold", size: 16))
                             .foregroundColor(Color(red: 1.0, green: 0.815, blue: 0.0))
                         
-                        Text("Scroll down to share your response!")
+                        Text(isReturningToUnlocked ? "Your unlocked prompt is waiting below!" : "Scroll down to share your response!")
                             .font(.custom("Fredoka-Regular", size: 14))
                             .foregroundColor(Color(red: 0.8, green: 0.65, blue: 0.0))
                     }
@@ -1937,11 +2029,26 @@ struct GroupDetailView: View {
         isUnlockingPrompt = false
         animateCountdownRefresh = false
         hasTriggeredUnlockForCurrentPrompt = false // Reset so next timing cycle can trigger
+        hasSeenCurrentPrompt = false // Reset when prompt is completed - ready for next prompt
         // DON'T reset hasNewPromptReadyForAnimation here - only clear it when animation actually plays
         // hasNewPromptReadyForAnimation = false // Reset the new animation flag
         showPromptCompletedFeedback = false // Reset feedback states
         showNewPromptUnlockedFeedback = false // Reset feedback states
         print("🎬 🔄 Kept hasNewPromptReadyForAnimation = \(hasNewPromptReadyForAnimation) (not resetting)")
+        print("🎬 🔄 Reset hasSeenCurrentPrompt to: \(hasSeenCurrentPrompt)")
+    }
+    
+    // CRITICAL FIX: Ensure prompt is always available for user when they return
+    private func ensurePromptIsAvailable() {
+        let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+        
+        // If prompt is not completed and not empty, make sure it's available for answering
+        if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
+            print("🔧 ensurePromptIsAvailable: Making prompt available for answering")
+            showNewPromptCard = true
+            hasUnlockedNewPrompt = true
+            hasSeenCurrentPrompt = true
+        }
     }
     
     private func scheduleNextPromptNotification() {
@@ -2227,146 +2334,149 @@ struct GroupDetailView: View {
     }
     
     private func capturedImageView(image: UIImage) -> some View {
-        VStack(spacing: 0) {
-            // Prompt box with image inside
-            VStack(alignment: .leading, spacing: 0) {
-                // Prompt text at the top
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(currentPrompt)
-                        .font(.custom("Fredoka-Medium", size: 16))
-                        .foregroundColor(.black)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+        ScrollView {
+            VStack(spacing: 0) {
+                // Add top padding to ensure content isn't hidden behind navigation
+                Spacer()
+                    .frame(height: 20)
                 
-                // Image in the middle
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: capturedFrameSize.height)
-                    .cornerRadius(12)
-                    .clipped()
+                // Prompt box with image inside
+                VStack(alignment: .leading, spacing: 0) {
+                    // Prompt text at the top
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(currentPrompt)
+                            .font(.custom("Fredoka-Medium", size: 16))
+                            .foregroundColor(.black)
+                    }
                     .padding(.horizontal, 16)
-                
-                // Response text field at the bottom
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Add your response...")
-                        .font(.caption)
-                        .foregroundColor(.gray)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
                     
-                    if #available(iOS 16.0, *) {
-                        TextField("e.g., corepower w/ eliza", text: $responseText, axis: .vertical)
-                            .font(.custom("Fredoka-Regular", size: 16))
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .frame(minHeight: 40)
-                            .submitLabel(.done)
-                            .focused($isResponseFieldFocused)
-                            .onSubmit {
-                                hideKeyboard()
-                            }
-                            .onTapGesture {
-                                isResponseFieldFocused = true
-                                shouldScrollToResponse = true
-                            }
-                    } else {
-                        TextEditor(text: $responseText)
-                            .font(.custom("Fredoka-Regular", size: 16))
-                            .frame(minHeight: 60)
-                            .onTapGesture {
-                                isResponseFieldFocused = true
-                                shouldScrollToResponse = true
-                            }
-                    }
-                }
-                .id("responseField")
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
-            }
-            .background(Color(red: 1.0, green: 0.95, blue: 0.80))
-            .cornerRadius(15)
-            .padding(.horizontal)
-            
-            // Action Buttons outside the frame
-            HStack(spacing: 16) {
-                Button(action: {
-                    print("🔥 Share button tapped")
+                    // Image in the middle
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: capturedFrameSize.height)
+                        .cornerRadius(12)
+                        .clipped()
+                        .padding(.horizontal, 16)
                     
-                    // Add immediate haptic feedback
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                    impactFeedback.impactOccurred()
-                    
-                    guard let image = capturedImage else {
-                        print("🔥 ERROR: No captured image available")
-                        errorMessage = "No image to upload. Please take a photo first."
-                        showError = true
-                        return
-                    }
-                    
-                    guard !isUploading else {
-                        print("🔥 Already uploading, ignoring button tap")
-                        return
-                    }
-                    
-                    print("🔥 Starting upload for captured image")
-                    uploadImage(image)
-                }) {
-                    HStack(spacing: 6) {
-                        if isUploading {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                    // Response text field at the bottom
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Add your response...")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        
+                        if #available(iOS 16.0, *) {
+                            TextField("e.g., corepower w/ eliza", text: $responseText, axis: .vertical)
+                                .font(.body)
+                                .foregroundColor(.black) // Fixed dark color for all modes
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .frame(minHeight: 40)
+                                .onTapGesture {
+                                    // Use existing scroll mechanism instead of direct proxy access
+                                    shouldScrollToResponse = true
+                                }
                         } else {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 14))
+                            TextEditor(text: $responseText)
+                                .font(.custom("Fredoka-Regular", size: 16))
+                                .frame(minHeight: 60)
+                                .onTapGesture {
+                                    isResponseFieldFocused = true
+                                    shouldScrollToResponse = true
+                                }
+                        }
+                    }
+                    .id("responseField")
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
+                }
+                .background(Color(red: 1.0, green: 0.95, blue: 0.80))
+                .cornerRadius(15)
+                .padding(.horizontal)
+                
+                // Action Buttons outside the frame
+                HStack(spacing: 16) {
+                    Button(action: {
+                        print("🔥 Share button tapped")
+                        
+                        // Add immediate haptic feedback
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                        impactFeedback.impactOccurred()
+                        
+                        guard let image = capturedImage else {
+                            print("🔥 ERROR: No captured image available")
+                            errorMessage = "No image to upload. Please take a photo first."
+                            showError = true
+                            return
                         }
                         
-                        Text(isUploading ? "Uploading..." : "Share")
-                            .font(.custom("Fredoka-Regular", size: 16))
+                        guard !isUploading else {
+                            print("🔥 Already uploading, ignoring button tap")
+                            return
+                        }
+                        
+                        print("🔥 Starting upload for captured image")
+                        uploadImage(image)
+                    }) {
+                        HStack(spacing: 6) {
+                            if isUploading {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                            } else {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 14))
+                            }
+                            
+                            Text(isUploading ? "Uploading..." : "Share")
+                                .font(.custom("Fredoka-Regular", size: 16))
+                        }
+                        .foregroundColor(isUploading ? .gray : .blue)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .background(isUploading ? Color.gray.opacity(0.1) : Color.blue.opacity(0.1))
+                        .cornerRadius(8)
+                        .contentShape(Rectangle()) // Ensure entire area is tappable
                     }
-                    .foregroundColor(isUploading ? .gray : .blue)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .background(isUploading ? Color.gray.opacity(0.1) : Color.blue.opacity(0.1))
-                    .cornerRadius(8)
-                    .contentShape(Rectangle()) // Ensure entire area is tappable
-                }
-                .buttonStyle(PlainButtonStyle()) // Fix grey background on iOS 18.5
-                .disabled(isUploading)
-                .opacity(isUploading ? 0.6 : 1.0)
-            
-                Button(action: {
-                    print("🔥 Retake button tapped")
-                    
-                    // Add haptic feedback
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                    impactFeedback.impactOccurred()
-                    
-                    capturedImage = nil 
-                    responseText = "" // Also clear response text
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "camera.rotate")
-                            .font(.system(size: 14))
-                        Text("Retake")
-                            .font(.custom("Fredoka-Regular", size: 16))
+                    .buttonStyle(PlainButtonStyle()) // Fix grey background on iOS 18.5
+                    .disabled(isUploading)
+                    .opacity(isUploading ? 0.6 : 1.0)
+                
+                    Button(action: {
+                        print("🔥 Retake button tapped")
+                        
+                        // Add haptic feedback
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        
+                        capturedImage = nil 
+                        responseText = "" // Also clear response text
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "camera.rotate")
+                                .font(.system(size: 14))
+                            Text("Retake")
+                                .font(.custom("Fredoka-Regular", size: 16))
+                        }
+                        .foregroundColor(.red)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
+                        .contentShape(Rectangle()) // Ensure entire area is tappable
                     }
-                    .foregroundColor(.red)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(8)
-                    .contentShape(Rectangle()) // Ensure entire area is tappable
+                    .buttonStyle(PlainButtonStyle()) // Fix grey background on iOS 18.5
+                    .disabled(isUploading)
+                    .opacity(isUploading ? 0.6 : 1.0)
                 }
-                .buttonStyle(PlainButtonStyle()) // Fix grey background on iOS 18.5
-                .disabled(isUploading)
-                .opacity(isUploading ? 0.6 : 1.0)
+                .padding(.horizontal)
+                .padding(.top, 12)
+                .padding(.bottom, 40) // Extra bottom padding for better scrolling experience
             }
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 20)
         }
+        .modifier(ScrollDismissKeyboardModifier())
     }
     
     private var animatedCountdownTimerView: some View {
@@ -2379,10 +2489,11 @@ struct GroupDetailView: View {
             // 2. During unlock animation 
             // 3. After unlock animation is complete (showNewPromptCard = true)
             // 4. Current prompt hasn't been completed yet (active prompt state)
+            // 5. CRITICAL FIX: Always show if prompt is unlocked and not completed, regardless of hasSeenCurrentPrompt
             let shouldShowPromptCard = isInitialPrompt || 
                                      isUnlockingPrompt || 
                                      showNewPromptCard ||
-                                     !hasCompletedCurrentPrompt
+                                     (!hasCompletedCurrentPrompt && !currentPrompt.isEmpty)
             
             if shouldShowPromptCard {
                 // Show the prompt card with enhanced unlock animation
@@ -2400,9 +2511,10 @@ struct GroupDetailView: View {
                     .animation(.spring(response: 0.6, dampingFraction: 0.5), value: isUnlockingPrompt)
                     .transition(.scale.combined(with: .opacity))
                     .overlay(
-                        // Sparkle effect when unlocking
-                        showNewPromptCard ? AnyView(
-                            ZStack {
+                        // Visual indicator overlay
+                        ZStack {
+                            // Sparkle effect when unlocking
+                            if showNewPromptCard {
                                 ForEach(0..<8, id: \.self) { index in
                                     Image(systemName: "sparkle")
                                         .foregroundColor(.yellow)
@@ -2419,7 +2531,32 @@ struct GroupDetailView: View {
                                         )
                                 }
                             }
-                        ) : AnyView(EmptyView())
+                            
+                            // "Unlocked and waiting" indicator when user returns to unanswered prompt
+                            // Show "Ready to answer" badge ONLY when countdown is showing (prompt completed but next not ready)
+                            // Don't show when prompt input should be available
+                            if hasSeenCurrentPrompt && hasCompletedCurrentPrompt && nextPromptCountdown != "New prompt available!" {
+                                VStack {
+                                    HStack {
+                                        Spacer()
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "lock.open")
+                                                .foregroundColor(.green)
+                                                .font(.caption)
+                                            Text("Ready to unlock!")
+                                                .font(.custom("Fredoka-Medium", size: 12))
+                                                .foregroundColor(.green)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.green.opacity(0.15))
+                                        .cornerRadius(12)
+                                        .offset(x: -8, y: 8)
+                                    }
+                                    Spacer()
+                                }
+                            }
+                        }
                     )
                 } else {
                     Text("Loading prompt...")
@@ -2542,16 +2679,16 @@ struct GroupDetailView: View {
                 HStack(spacing: 12) {
                     ForEach(group.members) { member in
                         VStack(spacing: 8) {
-                            Circle()
-                                .fill(member.id == group.currentInfluencerId ? 
-                                      Color(red: 1.0, green: 0.815, blue: 0.0) : 
-                                      getPlaceholderColor(for: member.id))
-                                .frame(width: 50, height: 50)
-                                .overlay(
-                                    Text(member.name.prefix(1).uppercased())
-                                        .font(.custom("Fredoka-Medium", size: 20))
-                                        .foregroundColor(.white)
-                                )
+                            ZStack {
+                                ProfilePictureView(userId: member.id, size: 50, groupMembers: group.members)
+                                
+                                // Add influencer indicator overlay
+                                if member.id == group.currentInfluencerId {
+                                    Circle()
+                                        .stroke(Color(red: 1.0, green: 0.815, blue: 0.0), lineWidth: 3)
+                                        .frame(width: 50, height: 50)
+                                }
+                            }
                             
                             Text(member.name)
                                 .font(.custom("Fredoka-Regular", size: 12))
@@ -3064,6 +3201,33 @@ struct GroupDetailViewWrapper: View {
             }
             .padding()
             .background(Color(red: 1, green: 0.989, blue: 0.93))
+        }
+    }
+}
+
+// MARK: - iOS Compatibility Extensions
+struct ScrollDismissKeyboardModifier: ViewModifier {
+    let mode: ScrollDismissKeyboardMode
+    
+    enum ScrollDismissKeyboardMode {
+        case interactively
+        case immediately
+    }
+    
+    init(_ mode: ScrollDismissKeyboardMode = .interactively) {
+        self.mode = mode
+    }
+    
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            switch mode {
+            case .interactively:
+                content.scrollDismissesKeyboard(.interactively)
+            case .immediately:
+                content.scrollDismissesKeyboard(.immediately)
+            }
+        } else {
+            content
         }
     }
 }

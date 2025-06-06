@@ -1,27 +1,18 @@
 import SwiftUI
 import Combine
+import FirebaseFirestore
 
-// MARK: - Tutorial Step Model
+// MARK: - Tutorial Step Model (Simplified)
 struct TutorialStep: Identifiable {
     let id = UUID()
     let title: String
     let description: String
-    let targetView: String? // ID of the view to highlight
-    let position: TutorialPosition
-    let action: TutorialAction?
-    let image: String? // Optional image/icon
-    let highlightArea: CGRect? // Area to highlight
-    
-    enum TutorialPosition {
-        case top, bottom, center, custom(CGPoint)
-    }
-    
-    enum TutorialAction {
-        case next, done, custom(String, () -> Void)
-    }
+    let image: String // SF Symbol
+    let backgroundColor: Color
+    let accentColor: Color
 }
 
-// MARK: - Tutorial Manager
+// MARK: - Tutorial Manager (Simplified)
 class TutorialManager: ObservableObject {
     @Published var isShowingTutorial = false
     @Published var currentStepIndex = 0
@@ -31,23 +22,7 @@ class TutorialManager: ObservableObject {
     
     // Check if user has seen tutorial
     func shouldShowTutorial(for tutorialID: String) -> Bool {
-        // Check if tutorial was already completed
         let tutorialCompleted = userDefaults.bool(forKey: "tutorial_completed_\(tutorialID)")
-        
-        // For onboarding tutorial, also check if user is actually new
-        if tutorialID == "onboarding" {
-            // Check if user has completed profile setup (indicating they're not new)
-            let profileCompleted = userDefaults.bool(forKey: "profile_completed")
-            let hasUsername = userDefaults.string(forKey: "profile_username") != nil
-            let hasName = userDefaults.string(forKey: "profile_name") != nil
-            
-            // If user has completed profile setup previously, don't show tutorial
-            if profileCompleted || (hasUsername && hasName) {
-                print("🎯 Tutorial: User has existing profile, skipping onboarding tutorial")
-                return false
-            }
-        }
-        
         print("🎯 Tutorial: shouldShowTutorial(\(tutorialID)) = \(!tutorialCompleted)")
         return !tutorialCompleted
     }
@@ -59,7 +34,7 @@ class TutorialManager: ObservableObject {
         print("🎯 Tutorial: Marked \(tutorialID) as completed")
     }
     
-    // Add method to reset tutorials (for testing)
+    // Reset tutorial (for testing)
     func resetTutorial(for tutorialID: String) {
         userDefaults.removeObject(forKey: "tutorial_completed_\(tutorialID)")
         userDefaults.synchronize()
@@ -110,7 +85,7 @@ class TutorialManager: ObservableObject {
     }
 }
 
-// MARK: - Tutorial Overlay View
+// MARK: - Tutorial Overlay View (Simplified)
 struct TutorialOverlay: View {
     @ObservedObject var tutorialManager: TutorialManager
     let tutorialID: String
@@ -120,102 +95,165 @@ struct TutorialOverlay: View {
            let currentStep = tutorialManager.currentStep {
             ZStack {
                 // Semi-transparent background
-                Color.black.opacity(0.7)
+                Color.black.opacity(0.6)
                     .ignoresSafeArea()
-                    .animation(.easeInOut(duration: 0.3), value: tutorialManager.currentStepIndex)
+                    .onTapGesture {
+                        // Allow dismissing by tapping background
+                        tutorialManager.markTutorialCompleted(for: tutorialID)
+                        tutorialManager.endTutorial()
+                        completeOnboardingFlow()
+                    }
                 
-                // Highlight area (if specified)
-                if let highlightArea = currentStep.highlightArea {
-                    Rectangle()
-                        .frame(width: highlightArea.width, height: highlightArea.height)
-                        .position(x: highlightArea.midX, y: highlightArea.midY)
-                        .blendMode(.destinationOut)
-                }
-                
-                // Tutorial content
-                TutorialCard(
+                // Tutorial slide card
+                TutorialSlide(
                     step: currentStep,
                     tutorialManager: tutorialManager,
                     tutorialID: tutorialID
                 )
             }
-            .compositingGroup()
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            .animation(.easeInOut(duration: 0.3), value: tutorialManager.currentStepIndex)
+        }
+    }
+    
+    private func completeOnboardingFlow() {
+        print("🎯 Tutorial: completeOnboardingFlow() called")
+        
+        // Set onboarding flags in Firebase if user exists
+        if let userId = AuthenticationManager.shared.currentUser?.uid {
+            print("🎯 Tutorial: Updating Firebase for user: \(userId)")
+            let db = Firestore.firestore()
+            db.collection("users").document(userId).updateData([
+                "isFirstTimeUser": false,
+                "onboardingCompleted": true,
+                "lastUpdated": FieldValue.serverTimestamp()
+            ]) { error in
+                if let error = error {
+                    print("🎯 Tutorial: Firebase update error: \(error.localizedDescription)")
+                } else {
+                    print("🎯 Tutorial: Firebase update successful")
+                }
+            }
+        }
+        
+        // Complete authentication flow
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                AuthenticationManager.shared.isCompletingProfile = false
+                AuthenticationManager.shared.isAuthenticated = true
+            }
         }
     }
 }
 
-// MARK: - Tutorial Card
-struct TutorialCard: View {
+// MARK: - Tutorial Slide
+struct TutorialSlide: View {
     let step: TutorialStep
     @ObservedObject var tutorialManager: TutorialManager
     let tutorialID: String
     
     var body: some View {
-        let screenWidth = UIScreen.main.bounds.width
-        let cardWidth = min(screenWidth - 64, 320) // Responsive width with max
-        
-        VStack(spacing: 16) {
-            // Close button
-            HStack {
-                Spacer()
-                Button(action: {
-                    tutorialManager.markTutorialCompleted(for: tutorialID)
-                    tutorialManager.endTutorial()
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.white.opacity(0.8))
+        VStack(spacing: 0) {
+            // Top section with background color
+            VStack(spacing: 24) {
+                // Skip button (top right)
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        print("🎯 Tutorial: Skip button pressed")
+                        tutorialManager.markTutorialCompleted(for: tutorialID)
+                        tutorialManager.endTutorial()
+                        completeOnboardingFlow()
+                    }) {
+                        Text("Skip")
+                            .font(.custom("Fredoka-Medium", size: 16))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
                 }
-            }
-            
-            // Content
-            VStack(spacing: 14) {
-                // Image/Icon
-                if let imageName = step.image {
-                    Image(systemName: imageName)
-                        .font(.system(size: 40))
-                        .foregroundColor(.blue)
+                .padding(.top, 20)
+                .padding(.horizontal, 24)
+                
+                // Icon with animated background
+                ZStack {
+                    Circle()
+                        .fill(step.accentColor.opacity(0.2))
+                        .frame(width: 120, height: 120)
+                        .scaleEffect(1.0)
+                        .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: tutorialManager.currentStepIndex)
+                    
+                    Circle()
+                        .fill(step.accentColor.opacity(0.1))
+                        .frame(width: 150, height: 150)
+                        .scaleEffect(1.2)
+                        .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true), value: tutorialManager.currentStepIndex)
+                    
+                    Image(systemName: step.image)
+                        .font(.system(size: 50))
+                        .foregroundColor(.white)
                 }
                 
                 // Title
                 Text(step.title)
-                    .font(.custom("Fredoka-Bold", size: screenWidth < 375 ? 20 : 24))
+                    .font(.custom("Fredoka-Bold", size: 28))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                 
                 // Description
                 Text(step.description)
-                    .font(.custom("Fredoka-Regular", size: screenWidth < 375 ? 14 : 16))
+                    .font(.custom("Fredoka-Regular", size: 18))
                     .foregroundColor(.white.opacity(0.9))
                     .multilineTextAlignment(.center)
                     .lineLimit(4)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
                 
-                // Progress indicator
-                HStack(spacing: 6) {
+                Spacer()
+            }
+            .frame(height: 400)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        step.backgroundColor,
+                        step.backgroundColor.opacity(0.8)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            
+            // Bottom white section with navigation
+            VStack(spacing: 20) {
+                // Progress dots
+                HStack(spacing: 12) {
                     ForEach(0..<tutorialManager.steps.count, id: \.self) { index in
                         Circle()
-                            .fill(index == tutorialManager.currentStepIndex ? Color.blue : Color.white.opacity(0.3))
-                            .frame(width: 6, height: 6)
+                            .fill(index == tutorialManager.currentStepIndex ? step.accentColor : Color.gray.opacity(0.3))
+                            .frame(width: 10, height: 10)
+                            .scaleEffect(index == tutorialManager.currentStepIndex ? 1.3 : 1.0)
+                            .animation(.spring(response: 0.3), value: tutorialManager.currentStepIndex)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.top, 24)
                 
                 // Navigation buttons
-                HStack(spacing: 12) {
+                HStack(spacing: 16) {
                     if !tutorialManager.isFirstStep {
                         Button(action: {
                             tutorialManager.previousStep()
                         }) {
-                            Text("Back")
-                                .font(.custom("Fredoka-Medium", size: 14))
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                            HStack(spacing: 8) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text("Back")
+                                    .font(.custom("Fredoka-Medium", size: 16))
+                            }
+                            .foregroundColor(step.accentColor)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 25)
+                                    .stroke(step.accentColor, lineWidth: 2)
+                            )
                         }
                     }
                     
@@ -223,93 +261,81 @@ struct TutorialCard: View {
                     
                     Button(action: {
                         if tutorialManager.isLastStep {
+                            print("🎯 Tutorial: Get Started button pressed")
                             tutorialManager.markTutorialCompleted(for: tutorialID)
                             tutorialManager.endTutorial()
-                            
-                            // Navigate to circles if this is the onboarding tutorial
-                            if tutorialID == "onboarding" {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    // Navigate to groups view using window scene navigation
-                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                                       let window = windowScene.windows.first {
-                                        window.rootViewController = UIHostingController(rootView: 
-                                            NavigationView {
-                                                GroupListView()
-                                                    .environmentObject(GroupStore())
-                                            }
-                                        )
-                                    }
-                                }
-                            }
+                            completeOnboardingFlow()
                         } else {
                             tutorialManager.nextStep()
                         }
                     }) {
-                        Text(tutorialManager.isLastStep ? "Get Started!" : "Next")
-                            .font(.custom("Fredoka-Medium", size: 14))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
-                            .background(Color.blue)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                        HStack(spacing: 8) {
+                            Text(tutorialManager.isLastStep ? "Get Started!" : "Next")
+                                .font(.custom("Fredoka-Medium", size: 16))
+                            
+                            if !tutorialManager.isLastStep {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 14, weight: .medium))
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    step.accentColor,
+                                    step.accentColor.opacity(0.8)
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 25))
+                        .shadow(color: step.accentColor.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
             }
-            .padding(20)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.black.opacity(0.85))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                    )
-            )
+            .background(Color.white)
         }
-        .frame(width: cardWidth)
-        .padding(.horizontal, 32)
-        .position(getCardPosition())
+        .frame(width: min(UIScreen.main.bounds.width - 48, 350))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
     }
     
-    private func getCardPosition() -> CGPoint {
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
+    private func completeOnboardingFlow() {
+        print("🎯 Tutorial: completeOnboardingFlow() called")
         
-        // Get safe area insets with iOS 15+ compatibility
-        let safeAreaInsets: UIEdgeInsets
-        if #available(iOS 15.0, *) {
-            safeAreaInsets = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first(where: { $0.isKeyWindow })?.safeAreaInsets ?? UIEdgeInsets.zero
-        } else {
-            safeAreaInsets = UIApplication.shared.windows.first?.safeAreaInsets ?? UIEdgeInsets.zero
+        if let userId = AuthenticationManager.shared.currentUser?.uid {
+            let db = Firestore.firestore()
+            db.collection("users").document(userId).updateData([
+                "isFirstTimeUser": false,
+                "onboardingCompleted": true,
+                "lastUpdated": FieldValue.serverTimestamp()
+            ]) { error in
+                if let error = error {
+                    print("🎯 Tutorial: Firebase update error: \(error.localizedDescription)")
+                } else {
+                    print("🎯 Tutorial: Firebase update successful")
+                }
+            }
         }
         
-        // Account for safe areas and navigation
-        let topSafeArea = max(safeAreaInsets.top, 44) // At least 44pts for status bar
-        let bottomSafeArea = max(safeAreaInsets.bottom, 20) // At least 20pts padding
-        let availableHeight = screenHeight - topSafeArea - bottomSafeArea
-        
-        switch step.position {
-        case .top:
-            // Position in upper third, accounting for safe area and navigation
-            let yPosition = topSafeArea + 60 + (availableHeight * 0.15)
-            return CGPoint(x: screenWidth / 2, y: min(yPosition, screenHeight * 0.3))
-        case .bottom:
-            // Position in lower third, accounting for safe area
-            let yPosition = screenHeight - bottomSafeArea - 100 - (availableHeight * 0.15)
-            return CGPoint(x: screenWidth / 2, y: max(yPosition, screenHeight * 0.7))
-        case .center:
-            // True center accounting for safe areas
-            let yPosition = topSafeArea + (availableHeight / 2)
-            return CGPoint(x: screenWidth / 2, y: yPosition)
-        case .custom(let point):
-            return point
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                AuthenticationManager.shared.isCompletingProfile = false
+                AuthenticationManager.shared.isAuthenticated = true
+            }
         }
     }
 }
 
-// MARK: - Tutorial Extensions
+// MARK: - View Extensions (Simplified)
 extension View {
     func tutorialOverlay(
         tutorialManager: TutorialManager,
@@ -320,181 +346,59 @@ extension View {
             TutorialOverlay(tutorialManager: tutorialManager, tutorialID: tutorialID)
         }
     }
-    
-    func tutorialHighlight(
-        id: String,
-        tutorialManager: TutorialManager,
-        highlightColor: Color = .blue
-    ) -> some View {
-        self.overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(highlightColor, lineWidth: 3)
-                .opacity(shouldHighlight(id: id, tutorialManager: tutorialManager) ? 1 : 0)
-                .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), 
-                          value: shouldHighlight(id: id, tutorialManager: tutorialManager))
-        )
-    }
-    
-    private func shouldHighlight(id: String, tutorialManager: TutorialManager) -> Bool {
-        guard tutorialManager.isShowingTutorial,
-              let currentStep = tutorialManager.currentStep else { return false }
-        return currentStep.targetView == id
-    }
 }
 
-// MARK: - Predefined Tutorial Flows
+// MARK: - Tutorial Content
 extension TutorialManager {
     
-    // Onboarding Tutorial
     static func createOnboardingTutorial() -> [TutorialStep] {
         return [
             TutorialStep(
-                title: "Welcome to DIML! 🎉",
-                description: "Day In My Life - where you share authentic moments with your closest friends through daily prompts and photos.",
-                targetView: nil,
-                position: .center,
-                action: .next,
-                image: "heart.fill",
-                highlightArea: nil
+                title: "Welcome to DIML! ✨",
+                description: "Day In My Life - Share authentic moments with your closest friends through daily prompts and photos.",
+                image: "heart.circle.fill",
+                backgroundColor: Color.blue,
+                accentColor: Color(red: 1.0, green: 0.815, blue: 0.0) // Yellow
             ),
             
             TutorialStep(
-                title: "Create Your Profile ✨",
-                description: "Let's set up your profile with a photo, pronouns, and some fun details about yourself.",
-                targetView: "profile_section",
-                position: .top,
-                action: .next,
-                image: "person.circle.fill",
-                highlightArea: nil
-            ),
-            
-            TutorialStep(
-                title: "Join or Create Groups 👥",
-                description: "DIML is all about sharing with close friends. You can join existing groups or create your own circle.",
-                targetView: "groups_section",
-                position: .center,
-                action: .next,
+                title: "Create Your Circles 👥",
+                description: "Build intimate friend groups where you'll share your daily life.",
                 image: "person.3.fill",
-                highlightArea: nil
+                backgroundColor: Color(red: 1.0, green: 0.815, blue: 0.0), // Yellow
+                accentColor: Color.blue
             ),
             
             TutorialStep(
                 title: "Daily Prompts 📝",
-                description: "Every day, you'll receive fun prompts to share moments from your life - both photos and thoughts.",
-                targetView: "prompts_section",
-                position: .bottom,
-                action: .next,
-                image: "lightbulb.fill",
-                highlightArea: nil
-            ),
-            
-            TutorialStep(
-                title: "Your Memory Capsule 📸",
-                description: "All your shared moments get collected in your personal capsule - a beautiful timeline of your memories.",
-                targetView: "capsule_section",
-                position: .center,
-                action: .next,
-                image: "photo.on.rectangle.angled",
-                highlightArea: nil
-            ),
-            
-            TutorialStep(
-                title: "Ready to Start! 🚀",
-                description: "You're all set! Start by completing your profile, then invite friends or join groups to begin sharing your daily moments.",
-                targetView: nil,
-                position: .center,
-                action: .done,
-                image: "checkmark.circle.fill",
-                highlightArea: nil
-            )
-        ]
-    }
-    
-    // Feature-specific tutorials
-    static func createGroupTutorial() -> [TutorialStep] {
-        return [
-            TutorialStep(
-                title: "Understanding Groups 👥",
-                description: "Groups are your private circles where you share daily life moments with close friends.",
-                targetView: nil,
-                position: .center,
-                action: .next,
-                image: "person.3.fill",
-                highlightArea: nil
+                description: "Every day, your circles receive fun prompts to respond to.",
+                image: "lightbulb.circle.fill",
+                backgroundColor: Color.blue,
+                accentColor: Color(red: 1.0, green: 0.815, blue: 0.0) // Yellow
             ),
             
             TutorialStep(
                 title: "The Influencer Role ⭐",
-                description: "Each day, one person becomes the 'influencer' and can take photos for prompts. This role rotates daily.",
-                targetView: "influencer_indicator",
-                position: .top,
-                action: .next,
-                image: "star.fill",
-                highlightArea: nil
+                description: "Each day, one person is chosen as the 'influencer' and can take photos for prompts. Everyone gets a turn!",
+                image: "star.circle.fill",
+                backgroundColor: Color(red: 1.0, green: 0.815, blue: 0.0), // Yellow
+                accentColor: Color.blue
             ),
             
-            TutorialStep(
-                title: "Prompts & Responses 💬",
-                description: "Everyone receives the same prompt and can respond with text, photos, or both - creating shared experiences.",
-                targetView: "prompt_area",
-                position: .bottom,
-                action: .next,
-                image: "bubble.left.and.bubble.right.fill",
-                highlightArea: nil
-            ),
-            
-            TutorialStep(
-                title: "React & Comment ❤️",
-                description: "Show love for your friends' posts with reactions and comments - keep the conversation going!",
-                targetView: "reaction_area",
-                position: .center,
-                action: .done,
-                image: "heart.circle.fill",
-                highlightArea: nil
-            )
-        ]
-    }
-    
-    static func createCapsuleTutorial() -> [TutorialStep] {
-        return [
             TutorialStep(
                 title: "Your Memory Capsule 📸",
-                description: "This is your personal collection of all the moments you've shared in DIML.",
-                targetView: "capsule_main",
-                position: .top,
-                action: .next,
+                description: "All your shared moments are saved in your personal memory capsule. Relive your favorite days anytime!",
                 image: "photo.stack.fill",
-                highlightArea: nil
+                backgroundColor: Color.blue,
+                accentColor: Color(red: 1.0, green: 0.815, blue: 0.0) // Yellow
             ),
             
             TutorialStep(
-                title: "Daily Collections 📅",
-                description: "Your entries are organized by date, with each day showing a preview that flickers through your uploads.",
-                targetView: "daily_capsule",
-                position: .center,
-                action: .next,
-                image: "calendar",
-                highlightArea: nil
-            ),
-            
-            TutorialStep(
-                title: "Tap to Explore 👆",
-                description: "Tap any day to see all your entries from that day in detail - photos, responses, and memories.",
-                targetView: "capsule_card",
-                position: .bottom,
-                action: .next,
-                image: "hand.tap.fill",
-                highlightArea: nil
-            ),
-            
-            TutorialStep(
-                title: "Pull to Refresh 🔄",
-                description: "Swipe down anytime to refresh and see your latest uploads appear in your capsule.",
-                targetView: "refresh_area",
-                position: .top,
-                action: .done,
-                image: "arrow.clockwise",
-                highlightArea: nil
+                title: "Let's Get Started! 🚀",
+                description: "You're all set! Create your first circle or ask friends to invite you to theirs. Time to share your daily moments!",
+                image: "checkmark.circle.fill",
+                backgroundColor: Color(red: 1.0, green: 0.815, blue: 0.0), // Yellow
+                accentColor: Color.blue
             )
         ]
     }

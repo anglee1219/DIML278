@@ -41,28 +41,24 @@ struct OnboardingTutorialView: View {
                             title: "Profile Setup",
                             description: "Customize your profile and preferences"
                         )
-                        .tutorialHighlight(id: "profile_section", tutorialManager: tutorialManager)
                         
                         OnboardingPreviewCard(
                             icon: "person.3.fill",
                             title: "Groups & Friends",
                             description: "Connect with your closest friends"
                         )
-                        .tutorialHighlight(id: "groups_section", tutorialManager: tutorialManager)
                         
                         OnboardingPreviewCard(
                             icon: "lightbulb.fill",
                             title: "Daily Prompts",
                             description: "Share moments through creative prompts"
                         )
-                        .tutorialHighlight(id: "prompts_section", tutorialManager: tutorialManager)
                         
                         OnboardingPreviewCard(
                             icon: "photo.on.rectangle.angled",
                             title: "Memory Capsule",
                             description: "Your personal collection of shared moments"
                         )
-                        .tutorialHighlight(id: "capsule_section", tutorialManager: tutorialManager)
                     }
                     
                     // Start tutorial button
@@ -138,23 +134,11 @@ struct OnboardingTutorialView: View {
             ])
         }
         
-        // Navigate to main app with GroupListView (circles)
+        // Complete the authentication flow by setting the proper state
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             withAnimation(.easeInOut(duration: 0.5)) {
-                // Set authenticated and navigate to groups tab
                 authManager.isCompletingProfile = false
                 authManager.isAuthenticated = true
-                
-                // Switch to groups view using window scene navigation
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let window = windowScene.windows.first {
-                    window.rootViewController = UIHostingController(rootView: 
-                        NavigationView {
-                            GroupListView()
-                                .environmentObject(GroupStore())
-                        }
-                    )
-                }
             }
         }
     }

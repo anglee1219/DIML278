@@ -42,6 +42,9 @@ import FirebaseAuth
 struct GroupListView: View {
     @StateObject private var groupStore = GroupStore()
     @StateObject private var authManager = AuthenticationManager.shared
+    @StateObject private var friendRequestManager = FriendRequestManager.shared
+    var sharedTutorialManager: TutorialManager?
+    @StateObject private var privateTutorialManager = TutorialManager()
     @State private var showingCreateGroup = false
     @State private var showingAddFriends = false
     @State private var showCamera = false
@@ -56,6 +59,106 @@ struct GroupListView: View {
     @State private var statusRefreshTimer: Timer?
     @State private var lastRefresh = Date() // Force view updates for status changes
     @State private var entryStoreCache: [String: EntryStore] = [:] // Add cache for EntryStore instances
+    @State private var hasRecentFriendActivity = false // Track recent friend request activity
+    @State private var showTapDebugMessage = false // Show which tap method was triggered
+    @State private var tapDebugMessage = "" // The debug message to show
+    
+    private var tutorialManager: TutorialManager {
+        return sharedTutorialManager ?? privateTutorialManager
+    }
+    
+    // Computed properties to break up complex expressions
+    private var hasPendingRequests: Bool {
+        return friendRequestManager.pendingRequests.count > 0
+    }
+    
+    private var pendingRequestCount: Int {
+        return friendRequestManager.pendingRequests.count
+    }
+    
+    // MARK: - Navigation Helper Functions
+    private func debugDeviceAndOS() {
+        print("🔍 === DEVICE & OS DEBUG INFO ===")
+        print("🔍 Device Model: \(UIDevice.current.model)")
+        print("🔍 Device Name: \(UIDevice.current.name)")
+        print("🔍 System Name: \(UIDevice.current.systemName)")
+        print("🔍 System Version: \(UIDevice.current.systemVersion)")
+        print("🔍 Screen Size: \(UIScreen.main.bounds)")
+        print("🔍 Screen Scale: \(UIScreen.main.scale)")
+        
+        // Check iOS version specific capabilities
+        if #available(iOS 18.0, *) {
+            print("🔍 iOS 18+ features available")
+        } else if #available(iOS 17.0, *) {
+            print("🔍 iOS 17+ features available")
+        } else if #available(iOS 16.0, *) {
+            print("🔍 iOS 16+ features available")
+        } else {
+            print("🔍 Older iOS version")
+        }
+        print("🔍 === END DEBUG INFO ===")
+    }
+    
+    private func handleGroupNavigation(group: Group) {
+        print("📱 🏠 === UNIVERSAL NAVIGATION TRIGGERED ===")
+        print("📱 🏠 Group: \(group.name)")
+        
+        // Debug device and OS info
+        debugDeviceAndOS()
+        
+        // Add haptic feedback for immediate user feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        print("📱 🏠 Haptic feedback triggered")
+        
+        // Add authentication check before navigation
+        if let currentUser = Auth.auth().currentUser {
+            print("📱 🏠 ✅ User authenticated: \(currentUser.uid)")
+            print("📱 🏠 User email: \(currentUser.email ?? "no email")")
+            
+            // Use notification-based navigation
+            print("📱 🏠 🚀 Posting navigation notification...")
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToGroupFromList"),
+                object: nil,
+                userInfo: ["groupId": group.id]
+            )
+            print("📱 🏠 ✅ Navigation notification posted successfully")
+        } else {
+            print("📱 🏠 ❌ USER NOT AUTHENTICATED - Cannot navigate to group")
+            print("📱 🏠 This might be why navigation isn't working on some devices")
+            
+            // Create visual feedback to show the tap was detected even if auth fails
+            print("📱 🏠 🔄 Attempting anonymous authentication...")
+            Auth.auth().signInAnonymously { result, error in
+                if let error = error {
+                    print("📱 🏠 ❌ Auth error: \(error.localizedDescription)")
+                } else if let user = result?.user {
+                    print("📱 🏠 ✅ Anonymous auth successful: \(user.uid)")
+                    DispatchQueue.main.async {
+                        // Use notification-based navigation after auth
+                        print("📱 🏠 🚀 Posting navigation notification after auth...")
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("NavigateToGroupFromList"),
+                            object: nil,
+                            userInfo: ["groupId": group.id]
+                        )
+                        print("📱 🏠 ✅ Navigation notification posted successfully after auth")
+                    }
+                }
+            }
+        }
+        print("📱 🏠 === UNIVERSAL NAVIGATION COMPLETED ===")
+    }
+    
+    private func handleGroupLongPress(group: Group) {
+        print("📱 🏠 === RELIABLE LONG PRESS TRIGGERED ===")
+        print("📱 🏠 Group: \(group.name)")
+        
+        groupToLeave = group
+        showLeaveConfirmation = true
+        print("📱 🏠 ✅ Long press action completed")
+    }
     
     private func handleInitialSetup() {
         // Remove automatic sheet trigger - let users choose to create groups manually
@@ -288,8 +391,7 @@ struct GroupListView: View {
     }
     
     var body: some View {
-        if #available(iOS 16.0, *) {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
                 // ✅ Reusable Top Nav
                 TopNavBar(showsMenu: false)
                 
@@ -316,16 +418,40 @@ struct GroupListView: View {
                                 .frame(width: 26, height: 26)
                                 .foregroundColor(.gray)
                             
-                            // Friend indicator badge - better positioned
-                            Circle()
-                                .fill(Color.blue)
-                                .frame(width: 10, height: 10)
-                                .overlay(
+                            // Friend request indicator badge - show different states
+                            if hasPendingRequests {
+                                // Red badge with count for pending requests
+                                ZStack {
                                     Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 6, height: 6)
-                                )
-                                .offset(x: 10, y: -10)
+                                        .fill(Color.red)
+                                        .frame(width: 16, height: 16)
+                                    
+                                    Text("\(pendingRequestCount)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .minimumScaleFactor(0.5)
+                                }
+                                .offset(x: 12, y: -12)
+                            } else if hasRecentFriendActivity {
+                                // Green checkmark for recent activity (accepted/declined)
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 12, height: 12)
+                                    .overlay(
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 7, weight: .bold))
+                                            .foregroundColor(.white)
+                                    )
+                                    .offset(x: 12, y: -12)
+                                    .onAppear {
+                                        // Auto-hide the activity indicator after 3 seconds
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                                            withAnimation(.easeOut(duration: 0.5)) {
+                                                hasRecentFriendActivity = false
+                                            }
+                                        }
+                                    }
+                            }
                         }
                     }
                 }
@@ -336,6 +462,7 @@ struct GroupListView: View {
                 HStack {
                     TextField("Search", text: $searchText)
                         .focused($isSearchFocused)
+                        .foregroundColor(.black) // Fixed dark color for visibility in all modes
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(Color.gray.opacity(0.15))
@@ -372,52 +499,54 @@ struct GroupListView: View {
                 } else {
                     List {
                         ForEach(groupStore.groups) { group in
-                            Button(action: {
-                                print("📱 🏠 Group tapped: \(group.name)")
-                                
-                                // Add authentication check before navigation
-                                if let currentUser = Auth.auth().currentUser {
-                                    print("🔴 DEBUG: User authenticated: \(currentUser.uid)")
-                                    print("🔴 DEBUG: User email: \(currentUser.email ?? "no email")")
-                                    
-                                    // Use notification-based navigation instead of NavigationLink
-                                    NotificationCenter.default.post(
-                                        name: NSNotification.Name("NavigateToGroupFromList"),
-                                        object: nil,
-                                        userInfo: ["groupId": group.id]
-                                    )
-                                } else {
-                                    print("🔴 DEBUG: ❌ USER NOT AUTHENTICATED - Cannot navigate to group")
-                                    print("🔴 DEBUG: This might be why navigation isn't working on the other device")
-                                    // Force authentication check
-                                    Auth.auth().signInAnonymously { result, error in
-                                        if let error = error {
-                                            print("🔴 DEBUG: Auth error: \(error.localizedDescription)")
-                                        } else if let user = result?.user {
-                                            print("🔴 DEBUG: Anonymous auth successful: \(user.uid)")
-                                            DispatchQueue.main.async {
-                                                // Use notification-based navigation after auth
-                                                NotificationCenter.default.post(
-                                                    name: NSNotification.Name("NavigateToGroupFromList"),
-                                                    object: nil,
-                                                    userInfo: ["groupId": group.id]
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }) {
+                            ZStack {
                                 GroupRowContent(
                                     group: group,
                                     groupStore: groupStore,
                                     getGroupStatus: getGroupStatus
                                 )
+                                
+                                // iOS 16 compatible touch handler
+                                UIKitTouchHandler(group: group) { tappedGroup in
+                                    print("📱 🎯 === UIKIT TOUCH TRIGGERED ===")
+                                    print("📱 🎯 Group: \(tappedGroup.name)")
+                                    print("📱 🎯 iOS Version: \(UIDevice.current.systemVersion)")
+                                    
+                                    // Visual feedback (can be removed for production)
+                                    tapDebugMessage = "✅ Touch Working"
+                                    showTapDebugMessage = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                        showTapDebugMessage = false
+                                    }
+                                    
+                                    handleGroupNavigation(group: tappedGroup)
+                                }
                             }
-                            .buttonStyle(PlainButtonStyle()) // Prevent button styling
                             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
-                            .onLongPressGesture {
+                            .simultaneousGesture(
+                                // Additional SwiftUI gesture as backup
+                                TapGesture()
+                                    .onEnded { _ in
+                                        print("📱 🔄 === SIMULTANEOUS GESTURE TRIGGERED ===")
+                                        print("📱 🔄 Group: \(group.name)")
+                                        print("📱 🔄 iOS Version: \(UIDevice.current.systemVersion)")
+                                        
+                                        // Backup gesture feedback
+                                        tapDebugMessage = "✅ Backup Touch"
+                                        showTapDebugMessage = true
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                            showTapDebugMessage = false
+                                        }
+                                        
+                                        // Small delay to avoid conflict with UIKit handler
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                            handleGroupNavigation(group: group)
+                                        }
+                                    }
+                            )
+                            .onLongPressGesture(minimumDuration: 1.0) {
                                 print("🔴 DEBUG: Long press detected for group: \(group.name)")
                                 
                                 // Add haptic feedback to confirm the long press was detected
@@ -502,7 +631,7 @@ struct GroupListView: View {
                     dismissButton: .default(Text("Got it!"))
                 )
             }
-            .scrollDismissesKeyboard(.immediately)
+            .modifier(ScrollDismissKeyboardModifier(.immediately))
             // Remove contentShape to prevent interfering with swipe gestures
             .onTapGesture {
                 // Only dismiss keyboard if search is focused
@@ -511,8 +640,36 @@ struct GroupListView: View {
                 }
             }
             .ignoresSafeArea(.keyboard)
+            .tutorialOverlay(tutorialManager: tutorialManager, tutorialID: "onboarding")
             .onAppear {
+                print("🎯 GroupListView: onAppear called")
                 handleInitialSetup()
+                
+                // Check if this is a first-time user who should see the tutorial
+                if tutorialManager.shouldShowTutorial(for: "onboarding") {
+                    print("🎯 GroupListView: Tutorial should show - starting tutorial for new user")
+                    
+                    // Start tutorial after a brief delay to ensure view is fully loaded
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        let steps = TutorialManager.createOnboardingTutorial()
+                        print("🎯 GroupListView: Created \(steps.count) tutorial steps")
+                        tutorialManager.startTutorial(steps: steps)
+                        print("🎯 GroupListView: Tutorial started, isShowingTutorial = \(tutorialManager.isShowingTutorial)")
+                    }
+                } else {
+                    print("🎯 GroupListView: Tutorial should NOT show (already completed)")
+                }
+                
+                // Initialize friend request manager
+                friendRequestManager.startListening()
+                
+                // Debug friend request status
+                print("🤝 GroupListView: Friend request status on appear")
+                print("🤝 Pending requests: \(friendRequestManager.pendingRequests.count)")
+                print("🤝 Sent requests: \(friendRequestManager.sentRequests.count)")
+                for request in friendRequestManager.pendingRequests {
+                    print("🤝 Pending: from \(request.from), status: \(request.status)")
+                }
                 
                 // Pre-load EntryStore instances for all groups to avoid loading delays
                 for group in groupStore.groups {
@@ -542,15 +699,42 @@ struct GroupListView: View {
                         keyboardVisible = false
                     }
                 }
+                
+                // Setup friend request activity observers
+                NotificationCenter.default.addObserver(forName: NSNotification.Name("FriendRequestAccepted"), object: nil, queue: .main) { _ in
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                        hasRecentFriendActivity = true
+                    }
+                }
+                NotificationCenter.default.addObserver(forName: NSNotification.Name("FriendRequestDeclined"), object: nil, queue: .main) { _ in
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                        hasRecentFriendActivity = true
+                    }
+                }
             }
             .onDisappear {
                 // Stop the timer when view disappears
                 statusRefreshTimer?.invalidate()
                 statusRefreshTimer = nil
             }
-        } else {
-            // Fallback on earlier versions
-        }
+            .overlay(
+                // Debug message overlay
+                VStack {
+                    if showTapDebugMessage {
+                        Text(tapDebugMessage)
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.green.opacity(0.9))
+                            .foregroundColor(.white)
+                            .cornerRadius(20)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                    Spacer()
+                }
+                .padding(.top, 100)
+                .animation(.spring(response: 0.5, dampingFraction: 0.7), value: showTapDebugMessage)
+            )
     }
 }
 
@@ -592,11 +776,97 @@ private struct ScrollViewOffsetPreferenceKey: PreferenceKey {
     }
 }
 
+// MARK: - UIKit Touch Handler for iOS 16 Compatibility
+struct UIKitTouchHandler: UIViewRepresentable {
+    let group: Group
+    let onTap: (Group) -> Void
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = TouchDebugView()
+        view.backgroundColor = UIColor.clear
+        view.group = group
+        
+        // Create tap gesture recognizer
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
+        tapGesture.numberOfTapsRequired = 1
+        tapGesture.numberOfTouchesRequired = 1
+        tapGesture.delegate = context.coordinator
+        view.addGestureRecognizer(tapGesture)
+        
+        print("🎯 UIKitTouchHandler: Created for group \(group.name)")
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        // No updates needed
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(group: group, onTap: onTap)
+    }
+    
+    class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        let group: Group
+        let onTap: (Group) -> Void
+        
+        init(group: Group, onTap: @escaping (Group) -> Void) {
+            self.group = group
+            self.onTap = onTap
+        }
+        
+        @objc func handleTap() {
+            print("🎯 UIKit tap gesture recognized for group: \(group.name)")
+            
+            // Add haptic feedback
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+            
+            // Trigger the callback
+            DispatchQueue.main.async {
+                self.onTap(self.group)
+            }
+        }
+        
+        // Allow simultaneous gestures
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            print("🎯 Gesture delegate: shouldRecognizeSimultaneouslyWith called")
+            return true
+        }
+        
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            print("🎯 Gesture delegate: shouldReceive touch for group \(group.name)")
+            return true
+        }
+    }
+}
+
+// Custom UIView for touch debugging
+class TouchDebugView: UIView {
+    var group: Group?
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        print("🎯 TouchDebugView: touchesBegan for group \(group?.name ?? "unknown")")
+        super.touchesBegan(touches, with: event)
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        print("🎯 TouchDebugView: touchesEnded for group \(group?.name ?? "unknown")")
+        super.touchesEnded(touches, with: event)
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        print("🎯 TouchDebugView: touchesCancelled for group \(group?.name ?? "unknown")")
+        super.touchesCancelled(touches, with: event)
+    }
+}
+
 // MARK: - GroupRowContent Component
 struct GroupRowContent: View {
     let group: Group
     let groupStore: GroupStore
     let getGroupStatus: (Group) -> (message: String, color: Color)
+    @State private var isPressed = false // For visual feedback
     
     var body: some View {
         let currentUserId = Auth.auth().currentUser?.uid ?? ""
@@ -606,25 +876,11 @@ struct GroupRowContent: View {
         HStack(spacing: 12) {
             HStack(spacing: -8) {
                 ForEach(displayMembers, id: \.id) { member in
-                    AsyncImage(url: URL(string: member.profileImageUrl ?? "")) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .overlay(
-                                Text(member.name.prefix(1).uppercased())
-                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                    .foregroundColor(.white)
-                            )
-                    }
-                    .frame(width: 40, height: 40)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white, lineWidth: 2)
-                    )
+                    ProfilePictureView(userId: member.id, size: 40, groupMembers: group.members)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white, lineWidth: 2)
+                        )
                 }
                 
                 // Show a "+" circle if there are more than 3 other members
@@ -676,14 +932,34 @@ struct GroupRowContent: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)
-        .frame(minHeight: 80)
+        .frame(minHeight: 88) // Increased minimum height for better touch targets
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                .fill(isPressed ? 
+                    Color(red: 0.95, green: 0.94, blue: 0.92) : // Darker when pressed
+                    Color(red: 0.98, green: 0.97, blue: 0.95)   // Normal color
+                )
+                .shadow(color: Color.black.opacity(isPressed ? 0.1 : 0.05), radius: isPressed ? 6 : 4, x: 0, y: 2)
         )
-        .buttonStyle(PlainButtonStyle()) // Prevent grey background on tap
+        .scaleEffect(isPressed ? 0.98 : 1.0) // Subtle scale effect when pressed
+        .animation(.easeInOut(duration: 0.1), value: isPressed) // Smooth animation
         .contentShape(Rectangle()) // Ensure entire area is tappable
+        .accessibility(addTraits: .isButton) // Improve accessibility for screen readers
+        .accessibility(label: Text("Chat group: \(group.name)")) // Add accessibility label
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                        // Immediate haptic feedback when touch begins
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
     }
 }
 

@@ -9,21 +9,42 @@ admin.initializeApp();
 // Cloud Function to send push notifications when a document is created
 exports.sendPushNotification = onDocumentCreated('notificationRequests/{requestId}', async (event) => {
     const notificationData = event.data.data();
+    const requestId = event.params.requestId;
     
     console.log('📱 🚀 ☁️ === CLOUD FUNCTION TRIGGERED ===');
-    console.log('📱 🚀 ☁️ Notification data:', notificationData);
+    console.log('📱 🚀 ☁️ Request ID:', requestId);
+    console.log('📱 🚀 ☁️ Notification data:', JSON.stringify(notificationData, null, 2));
     
     // Check if notification has already been processed
-    if (notificationData.processed) {
+    if (notificationData.processed === true) {
         console.log('📱 🚀 ☁️ Notification already processed, skipping');
         return null;
     }
     
-    const { fcmToken, title, body, data } = notificationData;
+    const { fcmToken, title, body, data, targetUserId, notificationType } = notificationData;
     
     if (!fcmToken) {
         console.log('📱 🚀 ☁️ ❌ No FCM token provided');
+        // Mark as failed
+        await admin.firestore().collection('notificationRequests').doc(requestId).update({
+            processed: true,
+            failed: true,
+            error: 'No FCM token provided',
+            processedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
         return null;
+    }
+    
+    console.log('📱 🚀 ☁️ Processing notification for user:', targetUserId);
+    console.log('📱 🚀 ☁️ Notification type:', notificationType);
+    console.log('📱 🚀 ☁️ FCM Token (last 8):', fcmToken.slice(-8));
+    
+    // Ensure data is properly formatted as strings for FCM
+    let formattedData = {};
+    if (data && typeof data === 'object') {
+        Object.keys(data).forEach(key => {
+            formattedData[key] = String(data[key]);
+        });
     }
     
     // Create the FCM message
@@ -32,7 +53,7 @@ exports.sendPushNotification = onDocumentCreated('notificationRequests/{requestI
             title: title || 'DIML Notification',
             body: body || 'You have a new notification'
         },
-        data: data || {},
+        data: formattedData,
         token: fcmToken,
         // iOS specific settings
         apns: {
@@ -51,28 +72,42 @@ exports.sendPushNotification = onDocumentCreated('notificationRequests/{requestI
     
     try {
         console.log('📱 🚀 ☁️ Sending FCM message...');
+        console.log('📱 🚀 ☁️ FCM message details:', JSON.stringify(message, null, 2));
+        
         const response = await admin.messaging().send(message);
         console.log('📱 🚀 ☁️ ✅ Successfully sent push notification:', response);
+        console.log('📱 🚀 ☁️ ✅ Notification sent to user:', targetUserId);
+        console.log('📱 🚀 ☁️ ✅ Response message ID:', response);
         
-        // Mark as processed
+        // Mark as processed successfully
         await event.data.ref.update({ 
             processed: true, 
-            sentAt: admin.firestore.FieldValue.serverTimestamp() 
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            messageId: response,
+            targetUserId: targetUserId,
+            success: true
         });
         
         return response;
     } catch (error) {
         console.error('📱 🚀 ☁️ ❌ Error sending push notification:', error);
+        console.error('📱 🚀 ☁️ ❌ Error code:', error.code);
+        console.error('📱 🚀 ☁️ ❌ Error message:', error.message);
+        console.error('📱 🚀 ☁️ ❌ Failed for user:', targetUserId);
+        console.error('📱 🚀 ☁️ ❌ FCM token (last 8):', fcmToken.slice(-8));
         
-        // Mark as failed
+        // Mark as failed with detailed error info
         await event.data.ref.update({ 
             processed: true, 
             failed: true, 
             error: error.message,
-            failedAt: admin.firestore.FieldValue.serverTimestamp() 
+            errorCode: error.code,
+            targetUserId: targetUserId,
+            failedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         
-        throw error;
+        // Don't throw the error - just log it and mark as failed
+        return null;
     }
 });
 

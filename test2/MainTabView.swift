@@ -7,6 +7,7 @@ struct MainTabView: View {
     @State private var showPermissionAlert = false
     @State private var keyboardVisible = false
     @StateObject private var authManager = AuthenticationManager.shared
+    @StateObject private var tutorialManager = TutorialManager()
     @EnvironmentObject var groupStore: GroupStore
     
     // Notification navigation state
@@ -40,21 +41,33 @@ struct MainTabView: View {
                     // Normal tab content only when NOT navigating from notification
                     switch currentTab {
                     case .home:
-                        GroupListView()
+                        GroupListView(sharedTutorialManager: tutorialManager)
                             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToGroupFromList"))) { notification in
                                 // Handle navigation from GroupListView when user taps a group normally
+                                print("📱 🏠 === MAINTABVIEW RECEIVED NAVIGATION ===")
                                 print("📱 🏠 GroupListView navigation received")
+                                print("📱 🏠 Device Model: \(UIDevice.current.model)")
+                                print("📱 🏠 System Version: \(UIDevice.current.systemVersion)")
                                 
                                 if let userInfo = notification.userInfo,
                                    let groupId = userInfo["groupId"] as? String {
-                                    print("📱 🏠 Navigating to group: \(groupId)")
+                                    print("📱 🏠 ✅ Valid group ID received: \(groupId)")
+                                    print("📱 🏠 Setting navigation state...")
                                     
                                     // Clear notification states for normal navigation
                                     self.targetGroupId = groupId
                                     self.shouldTriggerUnlock = false
                                     self.notificationUserInfo = [:]
                                     self.shouldNavigateToGroup = true
+                                    
+                                    print("📱 🏠 ✅ Navigation state set successfully")
+                                    print("📱 🏠 shouldNavigateToGroup: \(self.shouldNavigateToGroup)")
+                                    print("📱 🏠 targetGroupId: \(self.targetGroupId ?? "nil")")
+                                } else {
+                                    print("📱 🏠 ❌ Invalid notification data received")
+                                    print("📱 🏠 UserInfo: \(notification.userInfo ?? [:])")
                                 }
+                                print("📱 🏠 === MAINTABVIEW NAVIGATION HANDLING COMPLETE ===")
                             }
                     case .profile:
                         ProfileView()
@@ -66,9 +79,12 @@ struct MainTabView: View {
                     VStack {
                         Spacer()
                         if !keyboardVisible {
-                            BottomNavBar(currentTab: $currentTab) {
-                                checkCameraPermission()
-                            }
+                            BottomNavBar(
+                                currentTab: $currentTab,
+                                onCameraTap: {
+                                    checkCameraPermission()
+                                }
+                            )
                         }
                     }
                 }
