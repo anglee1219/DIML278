@@ -45,8 +45,24 @@ struct BioEntryView: View {
         let zodiacSign = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
         let username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
         let name = UserDefaults.standard.string(forKey: "profile_name") ?? username
+        let pronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
+        let birthday = UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date()
         
         print("✅ Profile data - username: \(username), name: \(name), zodiac: \(zodiacSign)")
+        
+        // Update UserDefaults with the bio entry data immediately
+        UserDefaults.standard.set(viewModel.location, forKey: "profile_location")
+        UserDefaults.standard.set(viewModel.school, forKey: "profile_school")
+        UserDefaults.standard.set(viewModel.interests, forKey: "profile_interests")
+        UserDefaults.standard.synchronize()
+        
+        // Update ProfileViewModel immediately with all data
+        viewModel.name = name
+        viewModel.username = username
+        viewModel.pronouns = pronouns
+        viewModel.zodiac = zodiacSign
+        viewModel.birthday = birthday
+        // Note: location, school, interests are already set in viewModel from the UI
         
         // Create profile data for Firestore
         let profileData: [String: Any] = [
@@ -56,8 +72,8 @@ struct BioEntryView: View {
             "school": viewModel.school,
             "interests": viewModel.interests,
             "zodiacSign": zodiacSign,
-            "pronouns": UserDefaults.standard.string(forKey: "profile_pronouns") ?? "",
-            "birthday": UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date(),
+            "pronouns": pronouns,
+            "birthday": birthday,
             "profileImageURL": UserDefaults.standard.string(forKey: "profile_image_url_\(currentUser.uid)") ?? "",
             "showLocation": true,
             "showSchool": true,
@@ -124,87 +140,87 @@ struct BioEntryView: View {
             Color(red: 1, green: 0.988, blue: 0.929)
                 .ignoresSafeArea()
             
-            VStack(spacing: 24) {
-                // Logo at the top
-                Image("DIML_Logo")
-                    .resizable()
-                    .frame(width: 60, height: 60)
-                    .padding(.top, 40)
-                
-                Text("Almost there!")
-                    .font(.custom("Markazi Text", size: 36))
-                    .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
-                
-                Text("Tell us a bit more about yourself")
-                    .font(.custom("Markazi Text", size: 24))
-                    .foregroundColor(.gray)
-                
-                // Location Button
-                Button(action: {
-                    showLocationSearch = true
-                }) {
-                    HStack {
-                        Image(systemName: "mappin.and.ellipse")
-                            .foregroundColor(.gray)
-                        Text(viewModel.location.isEmpty ? "Add your location" : viewModel.location)
-                            .foregroundColor(viewModel.location.isEmpty ? .gray : .black)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.gray)
-                    }
-                    .padding()
-                    .background(Color.white)
-                    .cornerRadius(10)
-                    .shadow(color: .black.opacity(0.05), radius: 2)
-                }
-                .padding(.horizontal)
-                
-                // School TextField
-                TextField("School", text: $viewModel.school)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding(.horizontal)
-                
-                // Interests TextField
-                TextField("Interests (separated by commas)", text: $viewModel.interests)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding(.horizontal)
-                
-                Spacer()
-                
-                // Navigation Links
-                NavigationLink(destination: BirthdayEntryView(), isActive: $navigateBack) { EmptyView() }
-                
-                // Navigation arrows
-                HStack {
-                    Button(action: {
-                        navigateBack = true
-                    }) {
-                        Image(systemName: "arrow.left.circle.fill")
-                            .resizable()
-                            .frame(width: 40, height: 40)
-                            .foregroundColor(.gray)
-                    }
-                    
+            ScrollView {
+                VStack(spacing: 20) {
                     Spacer()
+                        .frame(height: 20)
+                    
+                    Image("DIML_Logo")
+                        .resizable()
+                        .frame(width: 60, height: 60)
+                    
+                    Text("Almost there!")
+                        .font(.custom("Markazi Text", size: 32))
+                        .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
+                    
+                    Text("Tell us a bit more about yourself")
+                        .font(.custom("Markazi Text", size: 22))
+                        .foregroundColor(.gray)
                     
                     Button(action: {
-                        saveProfileToFirebase()
+                        showLocationSearch = true
                     }) {
-                        if isLoading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                                .frame(width: 40, height: 40)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
+                        HStack {
+                            Image(systemName: "mappin.and.ellipse")
+                                .foregroundColor(.gray)
+                            Text(viewModel.location.isEmpty ? "Add your location" : viewModel.location)
+                                .foregroundColor(viewModel.location.isEmpty ? .gray : .black)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.gray)
+                        }
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(10)
+                        .shadow(color: .black.opacity(0.05), radius: 2)
+                    }
+                    .padding(.horizontal)
+                    
+                    TextField("School", text: $viewModel.school)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding(.horizontal)
+                    
+                    TextField("Interests (separated by commas)", text: $viewModel.interests)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding(.horizontal)
+                    
+                    NavigationLink(destination: BirthdayEntryView(), isActive: $navigateBack) { EmptyView() }
+                    
+                    HStack {
+                        Button(action: {
+                            navigateBack = true
+                        }) {
+                            Image(systemName: "arrow.left.circle.fill")
                                 .resizable()
                                 .frame(width: 40, height: 40)
-                                .foregroundColor(Color.mainBlue)
+                                .foregroundColor(.gray)
                         }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            saveProfileToFirebase()
+                        }) {
+                            if isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .frame(width: 40, height: 40)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .resizable()
+                                    .frame(width: 40, height: 40)
+                                    .foregroundColor(Color.mainBlue)
+                            }
+                        }
+                        .disabled(isLoading)
                     }
-                    .disabled(isLoading)
+                    .padding(.horizontal, 40)
+                    .padding(.top, 30)
+                    
+                    Spacer()
+                        .frame(height: 60)
                 }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 40)
+                .padding(.bottom, 20)
             }
         }
         .sheet(isPresented: $showLocationSearch) {

@@ -115,30 +115,36 @@ struct ProfileView: View {
                         }
                         
                         // Name
-                        Text(viewModel.name)
+                        Text(viewModel.name.isEmpty ? "Your Name" : viewModel.name)
                             .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(viewModel.name.isEmpty ? .gray : .black)
                             .padding(.top, 8)
                         
                         // Username
-                        Text(viewModel.username)
+                        Text(viewModel.username.isEmpty ? "@username" : "@\(viewModel.username)")
                             .font(.system(size: 16))
-                            .foregroundColor(.black.opacity(0.6))
+                            .foregroundColor(viewModel.username.isEmpty ? .gray : .black.opacity(0.6))
                             .padding(.bottom, 4)
                         
                         // Pronouns and Sign
-                        Text("\(viewModel.pronouns) || \(viewModel.zodiac)")
+                        let pronounsText = viewModel.pronouns.isEmpty ? "pronouns" : viewModel.pronouns
+                        let zodiacText = viewModel.zodiac.isEmpty ? "zodiac" : viewModel.zodiac
+                        Text("\(pronounsText) || \(zodiacText)")
                             .font(.system(size: 16))
                             .foregroundColor(.black.opacity(0.6))
                         
                         // Info Section
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("location: \(viewModel.location)")
+                            Text("location: \(viewModel.location.isEmpty ? "Add your location" : viewModel.location)")
                                 .opacity(viewModel.showLocation ? 1 : 0)
                                 .animation(.easeInOut, value: viewModel.showLocation)
-                            Text("school: \(viewModel.school)")
+                                .foregroundColor(viewModel.location.isEmpty ? .gray : .black)
+                            Text("school: \(viewModel.school.isEmpty ? "Add your school" : viewModel.school)")
                                 .opacity(viewModel.showSchool ? 1 : 0)
                                 .animation(.easeInOut, value: viewModel.showSchool)
-                            Text("interests: \(viewModel.interests)")
+                                .foregroundColor(viewModel.school.isEmpty ? .gray : .black)
+                            Text("interests: \(viewModel.interests.isEmpty ? "Add your interests" : viewModel.interests)")
+                                .foregroundColor(viewModel.interests.isEmpty ? .gray : .black)
                         }
                         .font(.system(size: 16))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -360,6 +366,20 @@ struct ProfileView: View {
                     keyboardVisible = false
                 }
             }
+            
+            print("🔍 ProfileView onAppear - Loading profile data")
+            print("📊 Current viewModel data:")
+            print("   name: '\(viewModel.name)'")
+            print("   username: '\(viewModel.username)'") 
+            print("   pronouns: '\(viewModel.pronouns)'")
+            print("   zodiac: '\(viewModel.zodiac)'")
+            print("   location: '\(viewModel.location)'")
+            print("   school: '\(viewModel.school)'")
+            print("   interests: '\(viewModel.interests)'")
+            
+            // Always force refresh to ensure latest data
+            print("🔄 Forcing profile data refresh...")
+            viewModel.forceRefresh()
         }
     }
     
@@ -710,8 +730,8 @@ struct EditProfileSheet: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        // The @Published property wrapper in ProfileViewModel will automatically
-                        // trigger the save when any field changes, so we just need to close the sheet
+                        // Force sync all profile data across systems
+                        viewModel.forceSyncAfterEdit()
                         isPresented = false
                     }
                     .foregroundColor(Color(red: 0.722, green: 0.369, blue: 0))

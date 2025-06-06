@@ -21,7 +21,7 @@ public enum UserRole: Int, Codable {
     }
 }
 
-public class User: Identifiable, Codable {
+public class User: Identifiable, Codable, Hashable {
     public var id: String
     public var name: String
     public var username: String?
@@ -35,6 +35,7 @@ public class User: Identifiable, Codable {
     public var interests: String?
     public var createdAt: Date?
     public var lastUpdated: Date?
+    public var isDeleted: Bool?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -50,6 +51,7 @@ public class User: Identifiable, Codable {
         case interests
         case createdAt
         case lastUpdated
+        case isDeleted
     }
     
     public init(id: String = UUID().uuidString, 
@@ -64,7 +66,8 @@ public class User: Identifiable, Codable {
                 school: String? = nil,
                 interests: String? = nil,
                 createdAt: Date? = nil,
-                lastUpdated: Date? = nil) {
+                lastUpdated: Date? = nil,
+                isDeleted: Bool? = nil) {
         self.id = id
         self.name = name
         self.username = username
@@ -78,6 +81,7 @@ public class User: Identifiable, Codable {
         self.interests = interests
         self.createdAt = createdAt
         self.lastUpdated = lastUpdated
+        self.isDeleted = isDeleted
     }
     
     required public init(from decoder: Decoder) throws {
@@ -100,6 +104,7 @@ public class User: Identifiable, Codable {
         if let timestamp = try container.decodeIfPresent(Timestamp.self, forKey: .lastUpdated) {
             lastUpdated = timestamp.dateValue()
         }
+        isDeleted = try container.decodeIfPresent(Bool.self, forKey: .isDeleted)
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -122,16 +127,19 @@ public class User: Identifiable, Codable {
         if let lastUpdated = lastUpdated {
             try container.encode(Timestamp(date: lastUpdated), forKey: .lastUpdated)
         }
+        try container.encodeIfPresent(isDeleted, forKey: .isDeleted)
     }
     
     public static func == (lhs: User, rhs: User) -> Bool {
         lhs.id == rhs.id
     }
-}
-
-extension User: Hashable {
+    
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+    }
+    
+    var displayName: String {
+        return isDeleted == true ? "Deleted User" : name
     }
 }
 

@@ -8,7 +8,10 @@ import FirebaseMessaging
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
     func application(_ application: UIApplication,
                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        FirebaseApp.configure()
+        // Configure Firebase only if not already configured
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
         
         // Set up Firebase Cloud Messaging
         Messaging.messaging().delegate = self
@@ -39,6 +42,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 }
             }
         }
+        
+        // Initialize notification manager for push notifications
+        _ = NotificationManager.shared
         
         return true
     }
@@ -241,7 +247,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 
             case "friend_request":
                 print("🔔 🤝 User tapped friend request notification - should navigate to friends view")
-                // TODO: Navigate to friend requests
+                // Navigate to friend requests/add friends view
+                handleFriendRequestNotification(userInfo: response.notification.request.content.userInfo)
                 
             default:
                 print("🔔 ❓ Unknown notification type tapped: \(notificationType)")
@@ -375,6 +382,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
     }
     
+    // Handle friend request notification tap
+    private func handleFriendRequestNotification(userInfo: [AnyHashable: Any]) {
+        print("🔔 🤝 === HANDLING FRIEND REQUEST NOTIFICATION TAP ===")
+        
+        // Navigate to friend requests/add friends view
+        // Implement the navigation logic here
+    }
+    
     // This method is called when a notification is delivered to a backgrounded app
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                               didReceive notification: UNNotification) {
@@ -392,9 +407,19 @@ struct test2App: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     
     @StateObject private var authManager = AuthenticationManager.shared
-    @State private var isFirstTimeUser = false
     @State private var showOnboarding = false
     @StateObject private var groupStore = GroupStore()
+    
+    init() {
+        // Configure Firebase first, before initializing managers that might use it
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+        
+        // Initialize notification and friend request managers
+        _ = NotificationManager.shared
+        _ = FriendRequestManager.shared
+    }
     
     var body: some Scene {
         WindowGroup {
@@ -406,7 +431,7 @@ struct test2App: App {
                     .onAppear {
                         print("🏠 Showing BuildProfileFlowView - isCompletingProfile: \(authManager.isCompletingProfile)")
                     }
-                } else if showOnboarding || isFirstTimeUser {
+                } else if showOnboarding {
                     OnboardingTutorialView()
                         .onAppear {
                             print("🏠 Showing OnboardingTutorialView for first-time user")
@@ -448,7 +473,6 @@ struct test2App: App {
             .onChange(of: authManager.isAuthenticated) { newValue in
                 print("🔄 AuthState Changed - isAuthenticated: \(newValue)")
                 if newValue {
-                    checkFirstTimeUser()
                     // IMPORTANT: Request FCM token after authentication
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         delegate.requestAndSaveFCMToken()
@@ -470,34 +494,6 @@ struct test2App: App {
             .onAppear {
                 // Request notification permissions when app first appears
                 requestNotificationPermissions()
-            }
-        }
-    }
-    
-    private func checkFirstTimeUser() {
-        guard let userId = authManager.currentUser?.uid else { return }
-        
-        let db = Firestore.firestore()
-        db.collection("users").document(userId).getDocument { document, error in
-            DispatchQueue.main.async {
-                if let document = document, document.exists {
-                    let data = document.data()
-                    let isFirstTime = data?["isFirstTimeUser"] as? Bool ?? false
-                    let onboardingCompleted = data?["onboardingCompleted"] as? Bool ?? false
-                    
-                    // Show onboarding if it's a first-time user and onboarding hasn't been completed
-                    if isFirstTime && !onboardingCompleted {
-                        self.isFirstTimeUser = true
-                        self.showOnboarding = true
-                    } else {
-                        self.isFirstTimeUser = false
-                        self.showOnboarding = false
-                    }
-                } else {
-                    // If document doesn't exist or error, assume not first-time
-                    self.isFirstTimeUser = false
-                    self.showOnboarding = false
-                }
             }
         }
     }

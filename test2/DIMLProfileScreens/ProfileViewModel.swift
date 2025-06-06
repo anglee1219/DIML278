@@ -105,9 +105,6 @@ class ProfileViewModel: ObservableObject {
         // Load initial data from UserDefaults first
         loadInitialData()
         
-        // Then load from Firestore
-        loadUserProfile()
-        
         // Set up Auth state listener
         _ = Auth.auth().addStateDidChangeListener { [weak self] (auth, user) in
             if user != nil {
@@ -117,9 +114,22 @@ class ProfileViewModel: ObservableObject {
             }
         }
         
-        // Complete initialization after a brief delay to allow data loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        // Load from Firestore immediately if user is already authenticated
+        if Auth.auth().currentUser != nil {
+            loadUserProfile()
+        }
+        
+        // Complete initialization after a shorter delay and ensure data is loaded
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.isInitializing = false
+            
+            // Force refresh if profile data is empty but we have UserDefaults data
+            if self.name.isEmpty || self.username.isEmpty {
+                self.loadInitialData()
+                if Auth.auth().currentUser != nil {
+                    self.loadUserProfile()
+                }
+            }
         }
     }
     
@@ -296,6 +306,22 @@ class ProfileViewModel: ObservableObject {
             return
         }
         
+        print("💾 ProfileViewModel: Saving profile data...")
+        
+        // First, save to UserDefaults for local caching
+        UserDefaults.standard.set(name, forKey: "profile_name")
+        UserDefaults.standard.set(username, forKey: "profile_username")
+        UserDefaults.standard.set(pronouns, forKey: "profile_pronouns")
+        UserDefaults.standard.set(zodiac, forKey: "profile_zodiac")
+        UserDefaults.standard.set(birthday, forKey: "profile_birthday")
+        UserDefaults.standard.set(location, forKey: "profile_location")
+        UserDefaults.standard.set(school, forKey: "profile_school")
+        UserDefaults.standard.set(interests, forKey: "profile_interests")
+        UserDefaults.standard.set(showLocation, forKey: "privacy_show_location")
+        UserDefaults.standard.set(showSchool, forKey: "privacy_show_school")
+        UserDefaults.standard.synchronize()
+        
+        // Then, save to Firestore to sync with other users
         let db = Firestore.firestore()
         let profileData: [String: Any] = [
             "name": name,
@@ -313,11 +339,86 @@ class ProfileViewModel: ObservableObject {
         
         db.collection("users").document(userId).setData(profileData, merge: true) { error in
             if let error = error {
-                print("Error saving profile: \(error.localizedDescription)")
+                print("❌ Error saving profile to Firestore: \(error.localizedDescription)")
             } else {
-                print("Profile saved successfully")
+                print("✅ Profile saved successfully to both UserDefaults and Firestore")
+                
+                // Update group member information in all groups where this user is a member
+                self.updateGroupMemberInformation(userId: userId)
             }
         }
+    }
+    
+    // Method to update group member information when profile changes
+    private func updateGroupMemberInformation(userId: String) {
+        print("🔄 ProfileViewModel: Updating group member information for user: \(userId)")
+        
+        let db = Firestore.firestore()
+        
+        // Find all groups where this user is a member
+        db.collection("groups")
+            .whereField("memberIds", arrayContains: userId)
+            .getDocuments { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("❌ Error fetching user's groups: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    print("📭 No groups found for user")
+                    return
+                }
+                
+                print("🔍 Found \(documents.count) groups where user is a member")
+                
+                // Update member information in each group
+                for document in documents {
+                    let groupId = document.documentID
+                    guard document.exists else {
+                        continue
+                    }
+                    
+                    let documentData = document.data()
+                    
+                    guard let members = documentData["members"] as? [[String: Any]] else {
+                        continue
+                    }
+                    
+                    // Update the member data for this user
+                    let updatedMembers = members.map { memberData in
+                        var updatedMemberData = memberData
+                        
+                        // If this is the user we're updating
+                        if let memberId = memberData["id"] as? String, memberId == userId {
+                            // Update with current profile data
+                            updatedMemberData["name"] = self.name
+                            updatedMemberData["username"] = self.username
+                            updatedMemberData["pronouns"] = self.pronouns
+                            updatedMemberData["zodiacSign"] = self.zodiac
+                            updatedMemberData["location"] = self.location
+                            updatedMemberData["school"] = self.school
+                            updatedMemberData["interests"] = self.interests
+                            print("✅ Updated member data for user \(userId) in group \(groupId)")
+                        }
+                        
+                        return updatedMemberData
+                    }
+                    
+                    // Save updated members array back to the group
+                    db.collection("groups").document(groupId).updateData([
+                        "members": updatedMembers,
+                        "lastUpdated": FieldValue.serverTimestamp()
+                    ]) { error in
+                        if let error = error {
+                            print("❌ Error updating member data in group \(groupId): \(error.localizedDescription)")
+                        } else {
+                            print("✅ Successfully updated member data in group \(groupId)")
+                        }
+                    }
+                }
+            }
     }
     
     private func savePrivacySettings() {
@@ -425,5 +526,54 @@ class ProfileViewModel: ObservableObject {
             return UIImage(data: imageData)
         }
         return nil
+    }
+    
+    // Public method to force refresh profile data
+    func forceRefresh() {
+        print("🔄 ProfileViewModel: Force refresh requested")
+        
+        // Allow saving during refresh
+        isInitializing = false 
+        
+        // Reload from UserDefaults first to get any cached data
+        loadInitialData()
+        
+        // Then reload from Firestore to get the latest data
+        if Auth.auth().currentUser != nil {
+            loadUserProfile()
+        }
+        
+        // Also ensure we save UserDefaults data to Firestore if needed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if !self.name.isEmpty || !self.username.isEmpty {
+                self.saveProfile()
+            }
+        }
+    }
+    
+    // Public method to force sync all profile data across systems
+    func forceSyncAfterEdit() {
+        print("🔄 ProfileViewModel: Force sync after profile edit")
+        
+        guard Auth.auth().currentUser != nil else {
+            print("❌ No authenticated user for sync")
+            return
+        }
+        
+        // Save current data to all storage systems
+        saveProfile()
+        
+        // Update SharedProfileViewModel for immediate UI updates
+        DispatchQueue.main.async {
+            SharedProfileViewModel.shared.name = self.name
+            SharedProfileViewModel.shared.username = self.username
+            SharedProfileViewModel.shared.pronouns = self.pronouns
+            SharedProfileViewModel.shared.zodiac = self.zodiac
+            SharedProfileViewModel.shared.location = self.location
+            SharedProfileViewModel.shared.school = self.school
+            SharedProfileViewModel.shared.interests = self.interests
+        }
+        
+        print("✅ Profile sync completed - data updated across all systems")
     }
 } 

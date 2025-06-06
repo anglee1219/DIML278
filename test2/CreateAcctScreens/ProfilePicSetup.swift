@@ -17,75 +17,106 @@ struct ProfilePicSetup: View {
     
     var body: some View {
         ZStack {
-            Color(red: 1, green: 0.988, blue: 0.929)
+            Color(red: 1, green: 0.989, blue: 0.93)
                 .ignoresSafeArea()
-
-            VStack(spacing: 40) {
-                Image("DIML_Logo")
-                    .resizable()
-                    .frame(width: 60, height: 60)
-
-                Button(action: {
-                    showActionSheet = true
-                }) {
-                    if let image = image {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 160, height: 160)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.gray.opacity(0.4), lineWidth: 2))
-                    } else {
-                        Image(systemName: "person.crop.circle")
-                            .resizable()
-                            .frame(width: 160, height: 160)
-                            .foregroundColor(.gray.opacity(0.5))
-                    }
-                }
-
-                Text("Select a Profile Photo")
-                    .font(.custom("Markazi Text", size: 18))
-                    .foregroundColor(.gray)
-
-                Spacer()
-
-                // Navigation Link to next screen
-                NavigationLink(destination: PronounSelectionView(), isActive: $navigateToNext) {
-                    EmptyView()
-                }
-
-                // Navigation Arrows
-                HStack {
-                    // Back Arrow
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "arrow.left.circle.fill")
-                            .resizable()
-                            .frame(width: 40, height: 40)
+            
+            ScrollView {
+                VStack(spacing: 20) { // Reduced spacing
+                    // Add top padding
+                    Spacer()
+                        .frame(height: 20)
+                    
+                    // Logo
+                    Image("DIML_Logo")
+                        .resizable()
+                        .frame(width: 60, height: 60)
+                    
+                    // Title and subtitle
+                    VStack(spacing: 12) {
+                        Text("Add Your Profile Picture")
+                            .font(.custom("Markazi Text", size: 32)) // Reduced font size
+                            .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
+                        
+                        Text("Let your friends recognize you!")
+                            .font(.custom("Markazi Text", size: 20)) // Reduced font size
                             .foregroundColor(.gray)
                     }
                     
-                    Spacer()
-                    
-                    // Next Arrow
-                    Button(action: {
-                        // Save profile image to UserDefaults if selected
+                    // Profile image display
+                    ZStack {
                         if let image = image {
-                            viewModel.updateProfileImage(image)
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120) // Slightly reduced size
+                                .clipShape(Circle())
+                        } else {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 120, height: 120)
+                                .overlay(
+                                    Image(systemName: "person.circle")
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .foregroundColor(Color.gray.opacity(0.3))
+                                        .frame(width: 120, height: 120)
+                                )
                         }
-                        navigateToNext = true
-                    }) {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .resizable()
-                            .frame(width: 40, height: 40)
-                            .foregroundColor(Color.mainBlue)
+                        
+                        Button(action: {
+                            showActionSheet = true
+                        }) {
+                            Image(systemName: "camera.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.blue)
+                                .background(Color.white)
+                                .clipShape(Circle())
+                        }
+                        .offset(x: 45, y: 45)
                     }
+                    .padding(.vertical, 20)
+                    
+                    NavigationLink(destination: PronounSelectionView(), isActive: $navigateToNext) {
+                        EmptyView()
+                    }
+
+                    // Navigation Arrows
+                    HStack {
+                        // Back Arrow
+                        Button(action: {
+                            dismiss()
+                        }) {
+                            Image(systemName: "arrow.left.circle.fill")
+                                .resizable()
+                                .frame(width: 40, height: 40)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        Spacer()
+                        
+                        // Next Arrow
+                        Button(action: {
+                            // Save profile image to UserDefaults if selected
+                            if let image = image {
+                                viewModel.updateProfileImage(image)
+                            }
+                            navigateToNext = true
+                        }) {
+                            Image(systemName: "arrow.right.circle.fill")
+                                .resizable()
+                                .frame(width: 40, height: 40)
+                                .foregroundColor(Color.mainBlue)
+                        }
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.top, 30)
+                    
+                    // Add bottom padding for scroll content
+                    Spacer()
+                        .frame(height: 60)
                 }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 40)
+                .padding(.bottom, 20) // Extra bottom padding
             }
-            .padding(.top, 40)
             .confirmationDialog("Choose a photo", isPresented: $showActionSheet, titleVisibility: .visible) {
                 Button("Take Photo") {
                     checkCameraPermission()

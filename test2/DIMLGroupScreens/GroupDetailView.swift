@@ -833,12 +833,12 @@ struct GroupDetailView: View {
             // SHOW COUNTDOWN AT ZERO FIRST for animation sequence
             if timeInterval >= -5 { // Within 5 seconds of unlock time
                 nextPromptCountdown = "Prompt unlocking in 0s..."
+            
+            // Only trigger unlock animation if we haven't already done so for this timing cycle
+            if !hasTriggeredUnlockForCurrentPrompt {
+                print("🎯 🎬 Setting flag for delayed prompt unlock animation")
+                hasTriggeredUnlockForCurrentPrompt = true
                 
-                // Only trigger unlock animation if we haven't already done so for this timing cycle
-                if !hasTriggeredUnlockForCurrentPrompt {
-                    print("🎯 🎬 Setting flag for delayed prompt unlock animation")
-                    hasTriggeredUnlockForCurrentPrompt = true
-                    
                     // CRITICAL: Don't change currentPrompt here - preserve it for the "0s..." display
                     // Only generate the new prompt DURING the animation, not before
                     
@@ -852,20 +852,20 @@ struct GroupDetailView: View {
                         
                         // Store the new prompt but don't set currentPrompt yet
                         // The animation will handle setting currentPrompt at the right time
-                        
-                        // Send prompt unlock notification to influencer
-                        print("📱 🔔 Sending prompt unlock notification for new prompt")
+                    
+                    // Send prompt unlock notification to influencer
+                    print("📱 🔔 Sending prompt unlock notification for new prompt")
                         self.store.notifyPromptUnlock(prompt: newPrompt, influencerId: self.group.currentInfluencerId, groupName: self.group.name)
-                        
-                        // Only trigger animation if user is actively viewing this chat
+                    
+                    // Only trigger animation if user is actively viewing this chat
                         if self.isActivelyViewingChat {
-                            print("🎯 🎬 User is actively viewing chat - will trigger animation immediately")
+                        print("🎯 🎬 User is actively viewing chat - will trigger animation immediately")
                             self.hasNewPromptReadyForAnimation = false // Clear flag since we're using it now
-                            
+                        
                             // Trigger animation with the newly generated prompt
                             self.triggerPromptUnlockAnimation(newPrompt: newPrompt)
-                        } else {
-                            print("🎯 🎬 User not actively viewing chat - animation will trigger when they enter")
+                    } else {
+                        print("🎯 🎬 User not actively viewing chat - animation will trigger when they enter")
                             // Store for later animation when user enters
                             self.hasNewPromptReadyForAnimation = true
                             self.currentPrompt = newPrompt // Set here for when user enters
@@ -873,7 +873,7 @@ struct GroupDetailView: View {
                     }
                 }
                 return
-            } else {
+                } else {
                 nextPromptCountdown = "New prompt available!"
             }
             return
@@ -1250,57 +1250,57 @@ struct GroupDetailView: View {
             } else {
                 // Regular flow (not from notification)
                 print("🔍 🎬 Regular onAppear flow (not from notification)")
+            
+            // Check if we have a new prompt ready for animation when entering the view
+            if isInfluencer && hasNewPromptReadyForAnimation {
+                print("🔍 🎬 NEW PROMPT READY FOR ANIMATION DETECTED!")
+                print("🔍 🎬 Current prompt: '\(currentPrompt)'")
                 
-                // Check if we have a new prompt ready for animation when entering the view
-                if isInfluencer && hasNewPromptReadyForAnimation {
-                    print("🔍 🎬 NEW PROMPT READY FOR ANIMATION DETECTED!")
-                    print("🔍 🎬 Current prompt: '\(currentPrompt)'")
-                    
-                    // Store the current prompt before clearing the flag
-                    let promptForAnimation = currentPrompt
-                    hasNewPromptReadyForAnimation = false // Clear the flag
-                    
-                    // Show the prompt unlock feedback immediately
-                    showNewPromptUnlockedFeedback = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                        showNewPromptUnlockedFeedback = false
-                    }
-                    
+                // Store the current prompt before clearing the flag
+                let promptForAnimation = currentPrompt
+                hasNewPromptReadyForAnimation = false // Clear the flag
+                
+                // Show the prompt unlock feedback immediately
+                showNewPromptUnlockedFeedback = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                    showNewPromptUnlockedFeedback = false
+                }
+                
                     // Auto-scroll FIRST, then trigger animation
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        print("🔄 Auto-scrolling to new prompt BEFORE animation")
-                        shouldAutoScrollToPrompt = true
-                        
-                        // Then trigger animation after scroll completes
+                    print("🔄 Auto-scrolling to new prompt BEFORE animation")
+                    shouldAutoScrollToPrompt = true
+                    
+                    // Then trigger animation after scroll completes
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            print("🔍 🎬 TRIGGERING UNLOCK ANIMATION NOW!")
-                            triggerPromptUnlockAnimation(newPrompt: promptForAnimation)
-                        }
+                        print("🔍 🎬 TRIGGERING UNLOCK ANIMATION NOW!")
+                        triggerPromptUnlockAnimation(newPrompt: promptForAnimation)
                     }
-                } else if isInfluencer {
+                }
+            } else if isInfluencer {
                     // Check if prompt changed (standard logic)
-                    if currentPrompt != oldPrompt && !currentPrompt.isEmpty && !oldPrompt.isEmpty {
+                if currentPrompt != oldPrompt && !currentPrompt.isEmpty && !oldPrompt.isEmpty {
                         print("🔍 New prompt detected: '\(currentPrompt)', triggering animation")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            triggerPromptUnlockAnimation(newPrompt: currentPrompt)
-                        }
+                        triggerPromptUnlockAnimation(newPrompt: currentPrompt)
                     }
-                    
+                }
+                
                     // Auto-scroll to active prompt for influencers when main view appears
                     let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
                     print("🔄 Auto-scroll check: currentPrompt='\(currentPrompt)', hasCompleted=\(hasCompletedCurrentPrompt)")
-                    
-                    if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
+                
+                if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
                         print("🔄 Scheduling auto-scroll to activePrompt in 1.0 seconds")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            print("🔄 Triggering auto-scroll...")
-                            shouldAutoScrollToPrompt = true
-                        }
-                    } else {
-                        print("🔄 Auto-scroll skipped: prompt completed or empty")
+                        print("🔄 Triggering auto-scroll...")
+                        shouldAutoScrollToPrompt = true
                     }
                 } else {
-                    print("🔄 Auto-scroll skipped: not influencer")
+                    print("🔄 Auto-scroll skipped: prompt completed or empty")
+                }
+            } else {
+                print("🔄 Auto-scroll skipped: not influencer")
                 }
             }
             
@@ -1766,7 +1766,7 @@ struct GroupDetailView: View {
     
     // Helper function to check if an entry should be blurred
     private func shouldBlurEntry(entry: DIMLEntry, entryIndex: Int, sortedEntries: [DIMLEntry]) -> Bool {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+        guard Auth.auth().currentUser != nil else { return false }
         
         // Influencer can always see all entries
         if isInfluencer { return false }
@@ -2184,7 +2184,7 @@ struct GroupDetailView: View {
     private func testFCMPushNotification() {
         print("🧪 🚀 Testing FCM PUSH notification...")
         
-        guard let currentUserId = Auth.auth().currentUser?.uid else {
+        guard Auth.auth().currentUser != nil else {
             print("🧪 🚀 ❌ No authenticated user for FCM test")
             return
         }
@@ -2618,7 +2618,7 @@ struct GroupDetailView: View {
                             .multilineTextAlignment(.center)
                             .foregroundColor(.gray)
                             .padding(.horizontal, 16)
-                    }
+        }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
@@ -2634,66 +2634,66 @@ struct GroupDetailView: View {
         let isBlurred = shouldBlurEntry(entry: entry, entryIndex: entryIndex, sortedEntries: sortedEntries)
         
         return VStack(alignment: .leading, spacing: 0) {
-            // Prompt text at the top
-            VStack(alignment: .leading, spacing: 6) {
-                Text(entry.prompt)
-                    .font(.custom("Fredoka-Medium", size: 16))
-                    .foregroundColor(.black)
-                    .multilineTextAlignment(.leading)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
-            
-            // Image in the middle
-            if let imageURL = entry.imageURL {
-                AsyncImage(url: URL(string: imageURL)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(height: entry.frameSize.height)
-                            .cornerRadius(12)
-                            .clipped()
+                    // Prompt text at the top
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(entry.prompt)
+                            .font(.custom("Fredoka-Medium", size: 16))
+                            .foregroundColor(.black)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
+                    
+                    // Image in the middle
+                    if let imageURL = entry.imageURL {
+                        AsyncImage(url: URL(string: imageURL)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(height: entry.frameSize.height)
+                                    .cornerRadius(12)
+                                    .clipped()
                     case .failure(_):
-                        VStack {
-                            Image(systemName: "photo")
-                                .foregroundColor(.gray)
-                            Text("Failed to load image")
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                                VStack {
+                                    Image(systemName: "photo")
+                                        .foregroundColor(.gray)
+                                    Text("Failed to load image")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                .frame(height: entry.frameSize.height)
+                            case .empty:
+                                ProgressView()
+                                    .frame(height: entry.frameSize.height)
+                            @unknown default:
+                                EmptyView()
+                            }
                         }
-                        .frame(height: entry.frameSize.height)
-                    case .empty:
-                        ProgressView()
-                            .frame(height: entry.frameSize.height)
-                    @unknown default:
-                        EmptyView()
+                        .padding(.horizontal, 16)
+                    }
+                    
+                    // Response text at the bottom
+                    if !entry.response.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(entry.response)
+                                .font(.custom("Fredoka-Regular", size: 16))
+                                .foregroundColor(.black)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 16)
                     }
                 }
-                .padding(.horizontal, 16)
-            }
-            
-            // Response text at the bottom
-            if !entry.response.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(entry.response)
-                        .font(.custom("Fredoka-Regular", size: 16))
-                        .foregroundColor(.black)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
-            }
-        }
-        .background(Color(red: 1.0, green: 0.95, blue: 0.80))
-        .cornerRadius(15)
-        .padding(.horizontal)
+                .background(Color(red: 1.0, green: 0.95, blue: 0.80))
+                .cornerRadius(15)
+                .padding(.horizontal)
         .opacity(isBlurred ? 0.3 : 1.0) // Apply blur opacity
         .blur(radius: isBlurred ? 8 : 0) // Apply blur effect
-        .overlay(
+                .overlay(
             ZStack {
                 if isBlurred {
                     // Lock overlay for blurred entries
@@ -2768,13 +2768,13 @@ struct GroupDetailView: View {
                     .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
                 } else {
                     // Add reaction button positioned in bottom right corner (only for unlocked entries)
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
-                                .padding(.trailing, 20)
-                                .padding(.bottom, 20)
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
                         }
                     }
                 }
@@ -2880,7 +2880,7 @@ struct GroupDetailView: View {
             let calendar = Calendar.current
             let today = Date()
             let baseDailySeed = calendar.component(.year, from: today) * 1000 + (calendar.ordinality(of: .day, in: .year, for: today) ?? 1)
-            
+        
             // Use multiple seed variations including attempt number and timestamp
             let timestamp = Int(Date().timeIntervalSince1970)
             let variationSeed = UInt64(abs(baseDailySeed)) + 
@@ -2919,6 +2919,52 @@ struct GroupDetailView: View {
         
         print("🎯 Final unique prompt: '\(uniquePrompt)'")
         return uniquePrompt
+    }
+    
+    // MARK: - Notification Methods
+    
+    private func sendImmediatePromptUnlockNotification(prompt: String) {
+        guard let currentUserId = Auth.auth().currentUser?.uid,
+              isInfluencer else {
+            print("📱 Skipping immediate prompt unlock notification: not influencer")
+            return
+        }
+        
+        print("📱 🚀 Sending immediate prompt unlock notification")
+        
+        let content = UNMutableNotificationContent()
+        content.title = "🎉 New Prompt Unlocked!"
+        content.body = prompt
+        content.sound = .default
+        content.badge = 1
+        
+        // Enhanced metadata
+        content.userInfo = [
+            "type": "prompt_unlocked_immediate",
+            "groupId": group.id,
+            "groupName": group.name,
+            "userId": currentUserId,
+            "prompt": prompt,
+            "unlockTime": Date().timeIntervalSince1970
+        ]
+        
+        // Send immediately with a 1 second delay
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+        
+        let identifier = "prompt_unlocked_immediate_\(currentUserId)_\(group.id)_\(Date().timeIntervalSince1970)"
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: trigger
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("📱 🚀 ❌ Error sending immediate prompt unlock notification: \(error)")
+            } else {
+                print("📱 🚀 ✅ Successfully sent immediate prompt unlock notification")
+            }
+        }
     }
 }
 

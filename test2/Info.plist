@@ -12,9 +12,7 @@
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>background-processing</string>
 		<string>remote-notification</string>
-		<string>external-accessory</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

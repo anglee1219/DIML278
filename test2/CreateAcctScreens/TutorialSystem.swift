@@ -225,6 +225,22 @@ struct TutorialCard: View {
                         if tutorialManager.isLastStep {
                             tutorialManager.markTutorialCompleted(for: tutorialID)
                             tutorialManager.endTutorial()
+                            
+                            // Navigate to circles if this is the onboarding tutorial
+                            if tutorialID == "onboarding" {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    // Navigate to groups view using window scene navigation
+                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                                       let window = windowScene.windows.first {
+                                        window.rootViewController = UIHostingController(rootView: 
+                                            NavigationView {
+                                                GroupListView()
+                                                    .environmentObject(GroupStore())
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         } else {
                             tutorialManager.nextStep()
                         }

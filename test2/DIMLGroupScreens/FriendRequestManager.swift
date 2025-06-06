@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth
+import UserNotifications
 
 public enum FriendRequestStatus: String, Codable {
     case pending = "pending"
@@ -134,6 +135,10 @@ public class FriendRequestManager: ObservableObject {
             throw NSError(domain: "FriendRequestManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])
         }
         
+        // Get current user's name for the notification
+        let currentUserDoc = try await db.collection("users").document(currentUserId).getDocument()
+        let currentUserName = currentUserDoc.data()?["name"] as? String ?? "Someone"
+        
         let request = [
             "from": currentUserId,
             "to": targetUserId,
@@ -154,12 +159,110 @@ public class FriendRequestManager: ObservableObject {
             .collection("sentRequests")
             .document(targetUserId)
             .setData(request)
+        
+        // Send push notification for friend request
+        await sendFriendRequestNotification(to: targetUserId, fromUserName: currentUserName, fromUserId: currentUserId)
+    }
+    
+    // MARK: - Push Notification Methods
+    
+    private func sendFriendRequestNotification(to targetUserId: String, fromUserName: String, fromUserId: String) async {
+        print("🤝 Sending friend request notification to \(targetUserId)")
+        
+        // Get target user's FCM token
+        do {
+            let userDoc = try await db.collection("users").document(targetUserId).getDocument()
+            guard let userData = userDoc.data(),
+                  let fcmToken = userData["fcmToken"] as? String else {
+                print("🤝 ⚠️ No FCM token found for user \(targetUserId)")
+                return
+            }
+            
+            // Send FCM push notification
+            await sendFCMPushNotification(
+                token: fcmToken,
+                title: "🤝 New Friend Request",
+                body: "\(fromUserName) wants to be your friend!",
+                data: [
+                    "type": "friend_request",
+                    "fromUserId": fromUserId,
+                    "fromUserName": fromUserName
+                ]
+            )
+            
+        } catch {
+            print("🤝 ❌ Error getting FCM token: \(error)")
+        }
+    }
+    
+    private func sendLocalFriendRequestNotification(fromUserName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "🤝 New Friend Request"
+        content.body = "\(fromUserName) wants to be your friend!"
+        content.sound = .default
+        content.badge = 1
+        
+        content.userInfo = [
+            "type": "friend_request",
+            "fromUserName": fromUserName
+        ]
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+        let identifier = "friend_request_\(Date().timeIntervalSince1970)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("🤝 ❌ Error sending local friend request notification: \(error)")
+            } else {
+                print("🤝 ✅ Local friend request notification sent")
+            }
+        }
+    }
+    
+    private func sendFCMPushNotification(token: String, title: String, body: String, data: [String: String]) async {
+        print("🤝 📱 Sending FCM push notification...")
+        
+        // Create the notification payload
+        let _: [String: Any] = [
+            "to": token,
+            "notification": [
+                "title": title,
+                "body": body,
+                "sound": "default",
+                "badge": 1
+            ],
+            "data": data,
+            "priority": "high",
+            "content_available": true
+        ]
+        
+        // Store notification request in Firestore to trigger Cloud Function
+        let notificationRequest: [String: Any] = [
+            "fcmToken": token,
+            "title": title,
+            "body": body,
+            "data": data,
+            "timestamp": FieldValue.serverTimestamp(),
+            "processed": false
+        ]
+        
+        do {
+            try await db.collection("notificationRequests").addDocument(data: notificationRequest)
+            print("🤝 ✅ Friend request notification queued via Cloud Function")
+        } catch {
+            print("🤝 ❌ Error queuing friend request notification: \(error)")
+        }
     }
     
     public func acceptFriendRequest(from senderId: String) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "FriendRequestManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])
         }
+        
+        // Get current user's name for the notification
+        let currentUserDoc = try await db.collection("users").document(currentUserId).getDocument()
+        let currentUserName = currentUserDoc.data()?["name"] as? String ?? "Someone"
         
         // Update request status
         try await db.collection("users")
@@ -181,6 +284,70 @@ public class FriendRequestManager: ObservableObject {
         
         try await db.collection("users").document(senderId)
             .setData(["friends": FieldValue.arrayUnion([currentUserId])], merge: true)
+        
+        // Send notification to the original sender that their request was accepted
+        await sendFriendRequestAcceptedNotification(to: senderId, fromUserName: currentUserName, fromUserId: currentUserId)
+    }
+    
+    private func sendFriendRequestAcceptedNotification(to targetUserId: String, fromUserName: String, fromUserId: String) async {
+        print("🤝 ✅ Sending friend request accepted notification to \(targetUserId)")
+        
+        // Get target user's FCM token
+        do {
+            let userDoc = try await db.collection("users").document(targetUserId).getDocument()
+            guard let userData = userDoc.data(),
+                  let fcmToken = userData["fcmToken"] as? String else {
+                print("🤝 ⚠️ No FCM token found for user \(targetUserId)")
+                // Still send local notification as fallback
+                sendLocalFriendRequestAcceptedNotification(fromUserName: fromUserName)
+                return
+            }
+            
+            // Send FCM push notification
+            await sendFCMPushNotification(
+                token: fcmToken,
+                title: "🎉 Friend Request Accepted!",
+                body: "\(fromUserName) accepted your friend request!",
+                data: [
+                    "type": "friend_request_accepted",
+                    "fromUserId": fromUserId,
+                    "fromUserName": fromUserName
+                ]
+            )
+            
+            // Also send local notification as backup
+            sendLocalFriendRequestAcceptedNotification(fromUserName: fromUserName)
+            
+        } catch {
+            print("🤝 ❌ Error getting FCM token for accepted notification: \(error)")
+            // Fallback to local notification
+            sendLocalFriendRequestAcceptedNotification(fromUserName: fromUserName)
+        }
+    }
+    
+    private func sendLocalFriendRequestAcceptedNotification(fromUserName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "🎉 Friend Request Accepted!"
+        content.body = "\(fromUserName) accepted your friend request!"
+        content.sound = .default
+        content.badge = 1
+        
+        content.userInfo = [
+            "type": "friend_request_accepted",
+            "fromUserName": fromUserName
+        ]
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+        let identifier = "friend_request_accepted_\(Date().timeIntervalSince1970)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("🤝 ❌ Error sending local friend request accepted notification: \(error)")
+            } else {
+                print("🤝 ✅ Local friend request accepted notification sent")
+            }
+        }
     }
     
     public func rejectFriendRequest(from senderId: String) async throws {

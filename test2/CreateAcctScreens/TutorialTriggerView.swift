@@ -7,25 +7,29 @@ struct TutorialTriggerView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 16) {
+                    // Add top padding for smaller screens
+                    Spacer()
+                        .frame(height: 10)
+                    
                     // Header
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         Image(systemName: "graduationcap.fill")
-                            .font(.system(size: 60))
+                            .font(.system(size: 50))
                             .foregroundColor(.blue)
                         
                         Text("DIML Tutorials")
-                            .font(.custom("Fredoka-Bold", size: 28))
+                            .font(.custom("Fredoka-Bold", size: 24))
                             .foregroundColor(.black)
                         
                         Text("Learn how to use DIML features")
-                            .font(.custom("Fredoka-Regular", size: 16))
+                            .font(.custom("Fredoka-Regular", size: 14))
                             .foregroundColor(.gray)
                     }
-                    .padding(.top, 20)
+                    .padding(.top, 10)
                     
                     // Tutorial options
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
                         TutorialOptionCard(
                             icon: "heart.fill",
                             title: "App Overview",
@@ -72,11 +76,13 @@ struct TutorialTriggerView: View {
                             .background(Color.red.opacity(0.1))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
-                        .padding(.top, 20)
+                        .padding(.top, 16)
                     }
                     .padding(.horizontal, 20)
                     
+                    // Add bottom padding for scroll content
                     Spacer()
+                        .frame(height: 40)
                 }
             }
             .background(Color(red: 1, green: 0.989, blue: 0.93))

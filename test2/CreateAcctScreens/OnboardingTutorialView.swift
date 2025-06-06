@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseFirestore
 
 struct OnboardingTutorialView: View {
     @StateObject private var tutorialManager = TutorialManager()
@@ -11,90 +12,92 @@ struct OnboardingTutorialView: View {
             Color(red: 1, green: 0.988, blue: 0.929)
                 .ignoresSafeArea()
             
-            // Welcome content
-            VStack(spacing: 30) {
-                Spacer()
-                
-                // Logo and welcome
+            // Scrollable welcome content
+            ScrollView {
                 VStack(spacing: 20) {
-                    Image("DIML_Logo")
-                        .resizable()
-                        .frame(width: 100, height: 100)
+                    // Add top padding for smaller screens
+                    Spacer()
+                        .frame(height: 30)
                     
-                    Text("Welcome to DIML!")
-                        .font(.custom("Fredoka-Bold", size: 32))
-                        .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
-                    
-                    Text("Let's show you around")
-                        .font(.custom("Fredoka-Regular", size: 20))
-                        .foregroundColor(.gray)
-                }
-                
-                Spacer()
-                
-                // Tutorial sections preview
-                VStack(spacing: 20) {
-                    OnboardingPreviewCard(
-                        icon: "person.circle.fill",
-                        title: "Profile Setup",
-                        description: "Customize your profile and preferences"
-                    )
-                    .tutorialHighlight(id: "profile_section", tutorialManager: tutorialManager)
-                    
-                    OnboardingPreviewCard(
-                        icon: "person.3.fill",
-                        title: "Groups & Friends",
-                        description: "Connect with your closest friends"
-                    )
-                    .tutorialHighlight(id: "groups_section", tutorialManager: tutorialManager)
-                    
-                    OnboardingPreviewCard(
-                        icon: "lightbulb.fill",
-                        title: "Daily Prompts",
-                        description: "Share moments through creative prompts"
-                    )
-                    .tutorialHighlight(id: "prompts_section", tutorialManager: tutorialManager)
-                    
-                    OnboardingPreviewCard(
-                        icon: "photo.on.rectangle.angled",
-                        title: "Memory Capsule",
-                        description: "Your personal collection of shared moments"
-                    )
-                    .tutorialHighlight(id: "capsule_section", tutorialManager: tutorialManager)
-                }
-                
-                Spacer()
-                
-                // Start tutorial button
-                Button(action: {
-                    startTutorial()
-                }) {
-                    HStack {
-                        Image(systemName: "play.circle.fill")
-                            .font(.title2)
-                        Text("Start Tutorial")
-                            .font(.custom("Fredoka-Medium", size: 18))
+                    // Logo and welcome
+                    VStack(spacing: 16) {
+                        Image("DIML_Logo")
+                            .resizable()
+                            .frame(width: 80, height: 80)
+                        
+                        Text("Welcome to DIML!")
+                            .font(.custom("Fredoka-Bold", size: 28))
+                            .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
+                        
+                        Text("Let's show you around")
+                            .font(.custom("Fredoka-Regular", size: 18))
+                            .foregroundColor(.gray)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 30)
-                    .padding(.vertical, 15)
-                    .background(Color.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 25))
+                    
+                    // Tutorial sections preview
+                    VStack(spacing: 16) {
+                        OnboardingPreviewCard(
+                            icon: "person.circle.fill",
+                            title: "Profile Setup",
+                            description: "Customize your profile and preferences"
+                        )
+                        .tutorialHighlight(id: "profile_section", tutorialManager: tutorialManager)
+                        
+                        OnboardingPreviewCard(
+                            icon: "person.3.fill",
+                            title: "Groups & Friends",
+                            description: "Connect with your closest friends"
+                        )
+                        .tutorialHighlight(id: "groups_section", tutorialManager: tutorialManager)
+                        
+                        OnboardingPreviewCard(
+                            icon: "lightbulb.fill",
+                            title: "Daily Prompts",
+                            description: "Share moments through creative prompts"
+                        )
+                        .tutorialHighlight(id: "prompts_section", tutorialManager: tutorialManager)
+                        
+                        OnboardingPreviewCard(
+                            icon: "photo.on.rectangle.angled",
+                            title: "Memory Capsule",
+                            description: "Your personal collection of shared moments"
+                        )
+                        .tutorialHighlight(id: "capsule_section", tutorialManager: tutorialManager)
+                    }
+                    
+                    // Start tutorial button
+                    Button(action: {
+                        startTutorial()
+                    }) {
+                        HStack {
+                            Image(systemName: "play.circle.fill")
+                                .font(.title2)
+                            Text("Get Started")
+                                .font(.custom("Fredoka-Medium", size: 18))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 30)
+                        .padding(.vertical, 15)
+                        .background(Color.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 25))
+                    }
+                    
+                    // Skip option - navigates to circles
+                    Button(action: {
+                        navigateToCircles()
+                    }) {
+                        Text("Skip for now")
+                            .font(.custom("Fredoka-Regular", size: 16))
+                            .foregroundColor(.gray)
+                            .underline()
+                    }
+                    
+                    // Add bottom padding for scroll content
+                    Spacer()
+                        .frame(height: 40)
                 }
-                
-                // Skip option
-                Button(action: {
-                    skipTutorial()
-                }) {
-                    Text("Skip for now")
-                        .font(.custom("Fredoka-Regular", size: 16))
-                        .foregroundColor(.gray)
-                        .underline()
-                }
-                
-                Spacer()
+                .padding(.horizontal, 30)
             }
-            .padding(.horizontal, 30)
         }
         .tutorialOverlay(tutorialManager: tutorialManager, tutorialID: "onboarding")
         .onAppear {
@@ -104,14 +107,14 @@ struct OnboardingTutorialView: View {
                     startTutorial()
                 }
             } else {
-                // If tutorial was already seen, go to main app
-                completeOnboarding()
+                // If tutorial was already seen, go to circles
+                navigateToCircles()
             }
         }
         .onChange(of: tutorialManager.isShowingTutorial) { isShowing in
             if !isShowing && tutorialManager.steps.isEmpty {
                 // Tutorial completed or skipped
-                completeOnboarding()
+                navigateToCircles()
             }
         }
     }
@@ -121,13 +124,11 @@ struct OnboardingTutorialView: View {
         tutorialManager.startTutorial(steps: steps)
     }
     
-    private func skipTutorial() {
+    private func navigateToCircles() {
+        // Mark tutorial as completed if not already done
         tutorialManager.markTutorialCompleted(for: "onboarding")
-        completeOnboarding()
-    }
-    
-    private func completeOnboarding() {
-        // Remove first-time user flag
+        
+        // Set onboarding flags in Firebase
         if let userId = authManager.currentUser?.uid {
             let db = Firestore.firestore()
             db.collection("users").document(userId).updateData([
@@ -137,11 +138,23 @@ struct OnboardingTutorialView: View {
             ])
         }
         
-        // Navigate to main app
+        // Navigate to main app with GroupListView (circles)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             withAnimation(.easeInOut(duration: 0.5)) {
+                // Set authenticated and navigate to groups tab
                 authManager.isCompletingProfile = false
                 authManager.isAuthenticated = true
+                
+                // Switch to groups view using window scene navigation
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first {
+                    window.rootViewController = UIHostingController(rootView: 
+                        NavigationView {
+                            GroupListView()
+                                .environmentObject(GroupStore())
+                        }
+                    )
+                }
             }
         }
     }

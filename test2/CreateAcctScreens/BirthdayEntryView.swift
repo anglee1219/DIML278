@@ -25,90 +25,90 @@ struct BirthdayEntryView: View {
             Color(red: 1, green: 0.988, blue: 0.929)
                 .ignoresSafeArea()
             
-            VStack(spacing: 40) {
-                // Logo at the top
-                Image(systemName: "person.2.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.blue)
-                    .padding(.top, 60)
-                
-                // Question text
-                Text("When's your birthday?")
-                    .font(.custom("Markazi Text", size: 36))
-                    .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
-                    .padding(.bottom, 10)
-                
-                Text("You must be at least 13 years old to use DIML")
-                    .font(.custom("Markazi Text", size: 20))
-                    .foregroundColor(.gray)
-                
-                // Birthday Button
-                Button(action: {
-                    showDatePicker = true
-                }) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 15)
-                            .fill(Color.white)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 15)
-                                    .stroke(Color.mainBlue, lineWidth: 1)
-                            )
-                        
-                        HStack {
-                            Text(dateFormatter.string(from: birthDate))
-                                .font(.custom("Markazi Text", size: 24))
-                                .foregroundColor(Color.mainBlue)
+            ScrollView {
+                VStack(spacing: 30) {
+                    Spacer()
+                        .frame(height: 20)
+                    
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.blue)
+                    
+                    Text("When's your birthday?")
+                        .font(.custom("Markazi Text", size: 32))
+                        .foregroundColor(Color(red: 0.969, green: 0.757, blue: 0.224))
+                        .padding(.bottom, 10)
+                    
+                    Text("You must be at least 13 years old to use DIML")
+                        .font(.custom("Markazi Text", size: 18))
+                        .foregroundColor(.gray)
+                    
+                    Button(action: {
+                        showDatePicker = true
+                    }) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 15)
+                                .fill(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 15)
+                                        .stroke(Color.mainBlue, lineWidth: 1)
+                                )
                             
-                            if !zodiacSign.isEmpty {
-                                Text(zodiacEmoji)
-                                    .font(.system(size: 24))
+                            HStack {
+                                Text(dateFormatter.string(from: birthDate))
+                                    .font(.custom("Markazi Text", size: 24))
+                                    .foregroundColor(Color.mainBlue)
+                                
+                                if !zodiacSign.isEmpty {
+                                    Text(zodiacEmoji)
+                                        .font(.system(size: 24))
+                                }
                             }
                         }
+                        .frame(height: 56)
+                        .padding(.horizontal, 20)
                     }
-                    .frame(height: 56)
-                    .padding(.horizontal, 20)
-                }
-                
-                if !canProceed {
-                    Text("You must be at least 13 years old")
-                        .font(.custom("Markazi Text", size: 16))
-                        .foregroundColor(.red)
-                }
-                
-                Spacer()
-                
-                // Navigation Links
-                NavigationLink(destination: PronounSelectionView(), isActive: $navigateBack) { EmptyView() }
-                NavigationLink(destination: BioEntryView(), isActive: $navigateToNext) { EmptyView() }
-                
-                // Navigation arrows
-                HStack {
-                    Button(action: {
-                        navigateBack = true
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.title)
-                            .foregroundColor(Color.mainBlue)
+                    
+                    if !canProceed {
+                        Text("You must be at least 13 years old")
+                            .font(.custom("Markazi Text", size: 16))
+                            .foregroundColor(.red)
                     }
+                    
+                    NavigationLink(destination: PronounSelectionView(), isActive: $navigateBack) { EmptyView() }
+                    NavigationLink(destination: BioEntryView(), isActive: $navigateToNext) { EmptyView() }
+                    
+                    HStack {
+                        Button(action: {
+                            navigateBack = true
+                        }) {
+                            Image(systemName: "arrow.left")
+                                .font(.title)
+                                .foregroundColor(Color.mainBlue)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            if canProceed {
+                                let sign = ZodiacCalculator.getZodiacSign(from: birthDate)
+                                UserDefaults.standard.set(sign, forKey: "profile_zodiac")
+                                UserDefaults.standard.set(birthDate, forKey: "profile_birthday")
+                                navigateToNext = true
+                            }
+                        }) {
+                            Image(systemName: "arrow.right")
+                                .font(.title)
+                                .foregroundColor(canProceed ? Color.mainBlue : .gray)
+                        }
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.top, 30)
                     
                     Spacer()
-                    
-                    Button(action: {
-                        if canProceed {
-                            // Store both the zodiac sign and birthday
-                            let sign = ZodiacCalculator.getZodiacSign(from: birthDate)
-                            UserDefaults.standard.set(sign, forKey: "profile_zodiac")
-                            UserDefaults.standard.set(birthDate, forKey: "profile_birthday")
-                            navigateToNext = true
-                        }
-                    }) {
-                        Image(systemName: "arrow.right")
-                            .font(.title)
-                            .foregroundColor(canProceed ? Color.mainBlue : .gray)
-                    }
+                        .frame(height: 60)
                 }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 40)
+                .padding(.bottom, 20)
             }
         }
         .sheet(isPresented: $showDatePicker) {
@@ -139,7 +139,6 @@ struct BirthdayEntryView: View {
         }
         .navigationBarBackButtonHidden(true)
         .onAppear {
-            // Calculate initial zodiac sign
             let sign = ZodiacCalculator.getZodiacSign(from: birthDate)
             zodiacSign = sign
             zodiacEmoji = ZodiacCalculator.getZodiacEmoji(for: sign)

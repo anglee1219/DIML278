@@ -308,10 +308,29 @@ struct GroupListView: View {
                             showingAddFriends = true
                         }
                     } label: {
-                        Image(systemName: "plus.circle")
-                            .resizable()
-                            .frame(width: 25, height: 25)
-                            .foregroundColor(.gray)
+                        ZStack {
+                            Image(systemName: "plus.circle")
+                                .resizable()
+                                .frame(width: 25, height: 25)
+                                .foregroundColor(.gray)
+                            
+                            // Small friend indicator badge
+                            VStack {
+                                HStack {
+                                    Spacer()
+                                    Circle()
+                                        .fill(Color.blue)
+                                        .frame(width: 8, height: 8)
+                                        .overlay(
+                                            Image(systemName: "person.badge.plus")
+                                                .font(.system(size: 4))
+                                                .foregroundColor(.white)
+                                        )
+                                }
+                                Spacer()
+                            }
+                            .offset(x: 8, y: -8)
+                        }
                     }
                 }
                 .padding(.horizontal, 24)
