@@ -503,17 +503,29 @@ struct GroupSettingsView: View {
         .alert("Leave Circle", isPresented: $showLeaveGroupAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Leave", role: .destructive) {
+                print("🔴 Leave Circle button tapped from GroupSettingsView")
                 let success = groupStore.leaveGroup(group)
                 if success {
+                    print("✅ Successfully left group, dismissing settings and navigating back")
                     // Group was successfully left or deleted, dismiss settings and return to main view
                     isPresented = false
+                    
+                    // Also send reset navigation to ensure we go back to main tab
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ResetMainTabNavigation"),
+                            object: nil
+                        )
+                    }
+                } else {
+                    print("❌ Failed to leave group")
                 }
             }
         } message: {
             if group.members.count <= 1 {
-                Text("You are the only member of '\(group.name)'. Leaving will delete the entire circle permanently.")
+                Text("You are the only member of '\(group.name)'. Leaving will delete the entire circle permanently and all chat history will be lost.")
             } else {
-                Text("Are you sure you want to leave '\(group.name)'? You'll need to be re-invited to rejoin.")
+                Text("Are you sure you want to leave '\(group.name)'? You'll need to be re-invited to rejoin. Other members will see that you've left.")
             }
         }
         .sheet(isPresented: $showFriendProfile) {
@@ -536,20 +548,58 @@ struct FriendCell: View {
         Button(action: onTap) {
             VStack {
                 ZStack {
-                    Circle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 80, height: 80)
+                    // Profile image with AsyncImage
+                    AsyncImage(url: URL(string: friend.profileImageUrl ?? "")) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .overlay(
+                                Text(friend.name.prefix(1).uppercased())
+                                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white)
+                            )
+                    }
+                    .frame(width: 80, height: 80)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 3)
+                    )
                     
+                    // Selection overlay
                     if isSelected {
                         Circle()
                             .fill(Color.green.opacity(0.3))
                             .frame(width: 80, height: 80)
+                        
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
-                            .font(.system(size: 24))
+                            .font(.system(size: 28))
+                            .background(
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 32, height: 32)
+                            )
                     } else {
-                        Image(systemName: "plus")
-                            .foregroundColor(.black)
+                        // Plus icon overlay for unselected state
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.blue)
+                                    .font(.system(size: 24))
+                                    .background(
+                                        Circle()
+                                            .fill(Color.white)
+                                            .frame(width: 28, height: 28)
+                                    )
+                                    .offset(x: 8, y: 8)
+                            }
+                        }
                     }
                 }
 
@@ -557,14 +607,18 @@ struct FriendCell: View {
                     Text(friend.name)
                         .font(.custom("Markazi Text", size: 16))
                         .foregroundColor(.black)
+                        .lineLimit(1)
+                    
                     if let username = friend.username {
                         Text(username)
-                        .font(.custom("Markazi Text", size: 14))
-                        .foregroundColor(.gray)
+                            .font(.custom("Markazi Text", size: 14))
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
                     }
                 }
             }
         }
+        .buttonStyle(PlainButtonStyle()) // Prevent button styling
     }
 }
 

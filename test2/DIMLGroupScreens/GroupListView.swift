@@ -83,6 +83,26 @@ struct GroupListView: View {
         } else {
             entryStore = EntryStore(groupId: group.id)
             entryStoreCache[group.id] = entryStore
+            
+            // For new EntryStore instances, show loading state initially
+            // Give it a moment to load data before showing the "no entries" state
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                // Force a refresh after EntryStore has had time to load
+                lastRefresh = Date()
+            }
+        }
+        
+        // Check if EntryStore is still loading (entries array is empty but it's a new instance)
+        if entryStore.entries.isEmpty {
+            // Check if this is a newly created EntryStore that might still be loading
+            if !entryStoreCache.keys.contains(group.id) || entryStore.entries.count == 0 {
+                // Could be loading, show a neutral message
+                if isInfluencer {
+                    return ("⏳ Loading your DIML...", .gray)
+                } else {
+                    return ("⏳ Loading chat...", .gray)
+                }
+            }
         }
         
         // Get the most recent entry to see what was just shared
@@ -94,7 +114,7 @@ struct GroupListView: View {
             let isNewPromptReady = nextPromptTime <= Date()
             
             if isNewPromptReady && isInfluencer {
-                return ("✨ New prompt ready to answer!", Color(red: 1.0, green: 0.815, blue: 0.0))
+                return ("🎉 Your next DIML prompt is ready to answer!", Color(red: 1.0, green: 0.815, blue: 0.0))
             } else if isNewPromptReady && !isInfluencer {
                 return ("👀 Check for new updates!", .blue)
             } else {
@@ -116,9 +136,9 @@ struct GroupListView: View {
                 }
             }
         } else {
-            // No entries yet
+            // No entries yet (after loading is complete)
             if isInfluencer {
-                return ("🌟 Start your first DIML!", Color(red: 1.0, green: 0.815, blue: 0.0))
+                return ("🌟 Start your day in the life!", Color(red: 1.0, green: 0.815, blue: 0.0))
             } else {
                 return ("👋 Waiting for first post!", .gray)
             }
@@ -335,11 +355,48 @@ struct GroupListView: View {
                 } else {
                     List {
                         ForEach(groupStore.groups) { group in
-                            GroupRowContent(
-                                group: group,
-                                groupStore: groupStore,
-                                getGroupStatus: getGroupStatus
-                            )
+                            Button(action: {
+                                print("📱 🏠 Group tapped: \(group.name)")
+                                
+                                // Add authentication check before navigation
+                                if let currentUser = Auth.auth().currentUser {
+                                    print("🔴 DEBUG: User authenticated: \(currentUser.uid)")
+                                    print("🔴 DEBUG: User email: \(currentUser.email ?? "no email")")
+                                    
+                                    // Use notification-based navigation instead of NavigationLink
+                                    NotificationCenter.default.post(
+                                        name: NSNotification.Name("NavigateToGroupFromList"),
+                                        object: nil,
+                                        userInfo: ["groupId": group.id]
+                                    )
+                                } else {
+                                    print("🔴 DEBUG: ❌ USER NOT AUTHENTICATED - Cannot navigate to group")
+                                    print("🔴 DEBUG: This might be why navigation isn't working on the other device")
+                                    // Force authentication check
+                                    Auth.auth().signInAnonymously { result, error in
+                                        if let error = error {
+                                            print("🔴 DEBUG: Auth error: \(error.localizedDescription)")
+                                        } else if let user = result?.user {
+                                            print("🔴 DEBUG: Anonymous auth successful: \(user.uid)")
+                                            DispatchQueue.main.async {
+                                                // Use notification-based navigation after auth
+                                                NotificationCenter.default.post(
+                                                    name: NSNotification.Name("NavigateToGroupFromList"),
+                                                    object: nil,
+                                                    userInfo: ["groupId": group.id]
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }) {
+                                GroupRowContent(
+                                    group: group,
+                                    groupStore: groupStore,
+                                    getGroupStatus: getGroupStatus
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle()) // Prevent button styling
                             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -381,6 +438,10 @@ struct GroupListView: View {
                     print("🔴 DEBUG: leaveGroup result: \(success)")
                     if success {
                         print("✅ Successfully left group: \(group.name)")
+                        
+                        // Add haptic feedback for successful leaving
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+                        impactFeedback.impactOccurred()
                     } else {
                         print("❌ Failed to leave group: \(group.name)")
                     }
@@ -390,9 +451,9 @@ struct GroupListView: View {
                 }
             } message: { group in
                 if group.members.count <= 1 {
-                    Text("You are the only member of '\(group.name)'. Leaving will delete the entire circle permanently.")
+                    Text("You are the only member of '\(group.name)'. Leaving will delete the entire circle permanently and all chat history will be lost.")
                 } else {
-                    Text("Are you sure you want to leave '\(group.name)'?\nYou'll need to be invited back to rejoin.")
+                    Text("Are you sure you want to leave '\(group.name)'?\n\nThis will remove the circle from your list and you'll need to be invited back to rejoin. Other members will see that you've left.")
                 }
             }
             .onChange(of: showLeaveConfirmation) { isShowing in
@@ -435,6 +496,14 @@ struct GroupListView: View {
             .ignoresSafeArea(.keyboard)
             .onAppear {
                 handleInitialSetup()
+                
+                // Pre-load EntryStore instances for all groups to avoid loading delays
+                for group in groupStore.groups {
+                    if entryStoreCache[group.id] == nil {
+                        print("📋 Pre-loading EntryStore for group: \(group.name)")
+                        entryStoreCache[group.id] = EntryStore(groupId: group.id)
+                    }
+                }
                 
                 // Start status refresh timer
                 statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
@@ -511,7 +580,6 @@ struct GroupRowContent: View {
     let group: Group
     let groupStore: GroupStore
     let getGroupStatus: (Group) -> (message: String, color: Color)
-    @State private var navigateToGroup = false
     
     var body: some View {
         let currentUserId = Auth.auth().currentUser?.uid ?? ""
@@ -597,64 +665,8 @@ struct GroupRowContent: View {
                 .fill(Color(red: 0.98, green: 0.97, blue: 0.95))
                 .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         )
-        .onTapGesture {
-            print("🔴 DEBUG: Tap detected for group: \(group.name) - navigating")
-            
-            // Add authentication check before navigation
-            if let currentUser = Auth.auth().currentUser {
-                print("🔴 DEBUG: User authenticated: \(currentUser.uid)")
-                print("🔴 DEBUG: User email: \(currentUser.email ?? "no email")")
-                navigateToGroup = true
-            } else {
-                print("🔴 DEBUG: ❌ USER NOT AUTHENTICATED - Cannot navigate to group")
-                print("🔴 DEBUG: This might be why navigation isn't working on the other device")
-                // Force authentication check
-                Auth.auth().signInAnonymously { result, error in
-                    if let error = error {
-                        print("🔴 DEBUG: Auth error: \(error.localizedDescription)")
-                    } else if let user = result?.user {
-                        print("🔴 DEBUG: Anonymous auth successful: \(user.uid)")
-                        DispatchQueue.main.async {
-                            navigateToGroup = true
-                        }
-                    }
-                }
-            }
-        }
         .buttonStyle(PlainButtonStyle()) // Prevent grey background on tap
         .contentShape(Rectangle()) // Ensure entire area is tappable
-        .simultaneousGesture(
-            TapGesture()
-                .onEnded { _ in
-                    // Additional tap handling for iOS 18.5 compatibility
-                    print("🔴 DEBUG: Simultaneous gesture tap for group: \(group.name)")
-                    if !navigateToGroup {
-                        navigateToGroup = true
-                    }
-                }
-        )
-        .background(
-            // iOS version-specific navigation handling
-            ZStack {
-                if #available(iOS 16.0, *) {
-                    NavigationLink(
-                        destination: GroupDetailViewWrapper(groupId: group.id, groupStore: groupStore),
-                        isActive: $navigateToGroup
-                    ) {
-                        EmptyView()
-                    }
-                    .opacity(0)
-                } else {
-                    NavigationLink(
-                        destination: GroupDetailViewWrapper(groupId: group.id, groupStore: groupStore),
-                        isActive: $navigateToGroup
-                    ) {
-                        EmptyView()
-                    }
-                    .hidden()
-                }
-            }
-        )
     }
 }
 

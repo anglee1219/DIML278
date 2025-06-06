@@ -224,20 +224,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             
             switch notificationType {
             case "prompt_unlock", "prompt_unlocked_immediate":
-                print("🔔 📝 User tapped prompt unlock notification - should navigate to group chat")
-                // TODO: Navigate to specific group chat
+                print("🔔 📝 User tapped prompt unlock notification - navigating to group chat")
+                handlePromptUnlockNotification(userInfo: response.notification.request.content.userInfo)
                 
             case "diml_upload":
                 print("🔔 📸 User tapped DIML upload notification - should navigate to group feed")
-                // TODO: Navigate to specific group feed
+                handleDIMLUploadNotification(userInfo: response.notification.request.content.userInfo)
                 
             case "reaction":
                 print("🔔 🎉 User tapped reaction notification - should navigate to specific entry")
-                // TODO: Navigate to specific entry with reactions
+                handleReactionNotification(userInfo: response.notification.request.content.userInfo)
                 
             case "comment":
                 print("🔔 💬 User tapped comment notification - should navigate to comments view")
-                // TODO: Navigate to specific entry comments
+                handleCommentNotification(userInfo: response.notification.request.content.userInfo)
                 
             case "friend_request":
                 print("🔔 🤝 User tapped friend request notification - should navigate to friends view")
@@ -249,6 +249,130 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         
         completionHandler()
+    }
+    
+    // Handle prompt unlock notification tap
+    private func handlePromptUnlockNotification(userInfo: [AnyHashable: Any]) {
+        print("🔔 🎯 === HANDLING PROMPT UNLOCK NOTIFICATION TAP ===")
+        
+        guard let groupId = userInfo["groupId"] as? String,
+              let userId = userInfo["userId"] as? String else {
+            print("🔔 🎯 ❌ Missing groupId or userId in notification")
+            return
+        }
+        
+        let groupName = userInfo["groupName"] as? String ?? "Group"
+        let prompt = userInfo["prompt"] as? String ?? ""
+        
+        print("🔔 🎯 Group ID: \(groupId)")
+        print("🔔 🎯 User ID: \(userId)")
+        print("🔔 🎯 Group Name: \(groupName)")
+        print("🔔 🎯 Prompt: \(prompt)")
+        
+        // Post notification to navigate to the group and trigger unlock
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToGroupAndUnlock"),
+                object: nil,
+                userInfo: [
+                    "groupId": groupId,
+                    "userId": userId,
+                    "groupName": groupName,
+                    "prompt": prompt,
+                    "shouldTriggerUnlock": true
+                ]
+            )
+        }
+    }
+    
+    // Handle DIML upload notification tap  
+    private func handleDIMLUploadNotification(userInfo: [AnyHashable: Any]) {
+        print("🔔 📸 === HANDLING DIML UPLOAD NOTIFICATION TAP ===")
+        
+        guard let groupId = userInfo["groupId"] as? String else {
+            print("🔔 📸 ❌ Missing groupId in notification")
+            return
+        }
+        
+        let uploaderName = userInfo["uploaderName"] as? String ?? "Someone"
+        let prompt = userInfo["prompt"] as? String ?? ""
+        
+        print("🔔 📸 Group ID: \(groupId)")
+        print("🔔 📸 Uploader: \(uploaderName)")
+        print("🔔 📸 Prompt: \(prompt)")
+        
+        // Post notification to navigate to the group
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToGroup"),
+                object: nil,
+                userInfo: [
+                    "groupId": groupId,
+                    "uploaderName": uploaderName,
+                    "prompt": prompt
+                ]
+            )
+        }
+    }
+    
+    // Handle reaction notification tap
+    private func handleReactionNotification(userInfo: [AnyHashable: Any]) {
+        print("🔔 🎉 === HANDLING REACTION NOTIFICATION TAP ===")
+        
+        guard let groupId = userInfo["groupId"] as? String else {
+            print("🔔 🎉 ❌ Missing groupId in notification")
+            return
+        }
+        
+        let reactorName = userInfo["reactorName"] as? String ?? "Someone"
+        let reaction = userInfo["reaction"] as? String ?? "❤️"
+        
+        print("🔔 🎉 Group ID: \(groupId)")
+        print("🔔 🎉 Reactor: \(reactorName)")
+        print("🔔 🎉 Reaction: \(reaction)")
+        
+        // Navigate to group (reactions are visible in feed)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToGroup"),
+                object: nil,
+                userInfo: [
+                    "groupId": groupId,
+                    "reactorName": reactorName,
+                    "reaction": reaction
+                ]
+            )
+        }
+    }
+    
+    // Handle comment notification tap
+    private func handleCommentNotification(userInfo: [AnyHashable: Any]) {
+        print("🔔 💬 === HANDLING COMMENT NOTIFICATION TAP ===")
+        
+        guard let groupId = userInfo["groupId"] as? String else {
+            print("🔔 💬 ❌ Missing groupId in notification")
+            return
+        }
+        
+        let commenterName = userInfo["commenterName"] as? String ?? "Someone"
+        let commentText = userInfo["commentText"] as? String ?? ""
+        
+        print("🔔 💬 Group ID: \(groupId)")
+        print("🔔 💬 Commenter: \(commenterName)")
+        print("🔔 💬 Comment: \(commentText)")
+        
+        // Navigate to group (comments are visible in feed)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToGroup"),
+                object: nil,
+                userInfo: [
+                    "groupId": groupId,
+                    "commenterName": commenterName,
+                    "commentText": commentText
+                ]
+            )
+        }
     }
     
     // This method is called when a notification is delivered to a backgrounded app
@@ -272,11 +396,6 @@ struct test2App: App {
     @State private var showOnboarding = false
     @StateObject private var groupStore = GroupStore()
     
-    init() {
-        FirebaseApp.configure()
-        requestNotificationPermissions()
-    }
-    
     var body: some Scene {
         WindowGroup {
             ZStack {
@@ -297,6 +416,7 @@ struct test2App: App {
                     if #available(iOS 16.0, *) {
                         NavigationStack {
                             MainTabView(currentTab: .home)
+                                .environmentObject(groupStore)
                         }
                         .onAppear {
                             print("🏠 Showing MainTabView with NavigationStack - isAuthenticated: \(authManager.isAuthenticated)")
@@ -304,6 +424,7 @@ struct test2App: App {
                     } else {
                         NavigationView {
                             MainTabView(currentTab: .home)
+                                .environmentObject(groupStore)
                         }
                         .navigationViewStyle(StackNavigationViewStyle())
                         .onAppear {
@@ -345,6 +466,10 @@ struct test2App: App {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 // Clear badge when app becomes active
                 UIApplication.shared.applicationIconBadgeNumber = 0
+            }
+            .onAppear {
+                // Request notification permissions when app first appears
+                requestNotificationPermissions()
             }
         }
     }

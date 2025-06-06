@@ -328,6 +328,9 @@ class EntryStore: ObservableObject {
                     self?.getUserName(for: entry.userId) { uploaderName in
                         self?.getGroupMembers { groupMembers in
                             self?.sendDIMLUploadNotification(uploaderName: uploaderName, prompt: entry.prompt, groupMembers: groupMembers)
+                            
+                            // Schedule next prompt unlock notification for the influencer
+                            self?.scheduleNextPromptUnlockNotification()
                         }
                     }
                 }
@@ -1415,8 +1418,42 @@ class EntryStore: ObservableObject {
     
     // Public method to send prompt unlock notification
     func notifyPromptUnlock(prompt: String, influencerId: String, groupName: String) {
-        print("📱 EntryStore: Public method called for prompt unlock notification")
-        sendPromptUnlockNotification(prompt: prompt, influencerId: influencerId, groupName: groupName)
+        print("📱 🔔 === IMMEDIATE PROMPT UNLOCK NOTIFICATION ===")
+        print("📱 🔔 Prompt: '\(prompt)'")
+        print("📱 🔔 Influencer: \(influencerId)")
+        print("📱 🔔 Group: \(groupName)")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid,
+              currentUserId == influencerId else {
+            print("📱 🔔 ⚠️ Not sending immediate notification - user is not influencer")
+            return
+        }
+        
+        // Send immediate local notification (for when app is backgrounded)
+        let content = UNMutableNotificationContent()
+        content.title = "🎉 New Prompt Unlocked!"
+        content.body = "Your next DIML prompt is ready to answer!"  // Generic message - don't reveal the prompt
+        content.sound = .default
+        content.badge = 1
+        content.userInfo = [
+            "type": "prompt_unlocked_immediate",
+            "groupId": self.groupId,
+            "groupName": groupName,
+            "userId": influencerId,
+            "prompt": prompt  // Real prompt for animation (hidden from notification text)
+        ]
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+        let identifier = "prompt_unlocked_immediate_\(influencerId)_\(self.groupId)_\(Date().timeIntervalSince1970)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("📱 🔔 ❌ Error sending immediate prompt unlock notification: \(error)")
+            } else {
+                print("📱 🔔 ✅ Immediate prompt unlock notification sent")
+            }
+        }
     }
     
     private func getUserName(for userId: String, completion: @escaping (String) -> Void) {
@@ -1552,6 +1589,209 @@ class EntryStore: ObservableObject {
                     } else {
                         print("📱 🚀 ✅ Notification request stored for user \(userId) - Cloud Function will send push notification")
                         print("📱 🚀 ✅ This will work even when app is completely terminated!")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Prompt Unlock Notification Scheduling
+
+extension EntryStore {
+    
+    // Generate a realistic next prompt text for notifications
+    private func generateNextPromptText() -> String {
+        let timeOfDay = TimeOfDay.current()
+        let prompts: [String]
+        
+        switch timeOfDay {
+        case .morning:
+            prompts = [
+                "What's your morning looking like?",
+                "Show us your morning coffee or breakfast",
+                "What's the first thing you did today?",
+                "How are you starting your day?",
+                "What's your morning vibe?"
+            ]
+        case .afternoon:
+            prompts = [
+                "What's happening in your afternoon?",
+                "Show us what you're up to right now",
+                "What's your current energy like?",
+                "Share your afternoon activity",
+                "What's your midday mood?"
+            ]
+        case .night:
+            prompts = [
+                "How did your day go?",
+                "What's your evening looking like?",
+                "Share something from your day",
+                "What's your night routine?",
+                "How are you winding down?"
+            ]
+        }
+        
+        // Use a simple random selection for now
+        return prompts.randomElement() ?? "What does your day look like?"
+    }
+    
+    // Schedule next prompt unlock notification - called after influencer uploads entry
+    func scheduleNextPromptUnlockNotification() {
+        print("📱 ⏭️ === SCHEDULING NEXT PROMPT UNLOCK NOTIFICATION ===")
+        print("📱 ⏭️ Called from EntryStore.addEntry()")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("📱 ⏭️ ❌ No authenticated user")
+            return
+        }
+        
+        print("📱 ⏭️ Current user: \(currentUserId)")
+        print("📱 ⏭️ Group ID: \(groupId)")
+        
+        // Get group info to determine if current user is influencer and get frequency
+        db.collection("groups").document(groupId).getDocument { [weak self] document, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("📱 ⏭️ ❌ Error fetching group: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let document = document, document.exists, let data = document.data() else {
+                print("📱 ⏭️ ❌ Group document not found")
+                return
+            }
+            
+            guard let currentInfluencerId = data["currentInfluencerId"] as? String else {
+                print("📱 ⏭️ ❌ No current influencer ID found")
+                return
+            }
+            
+            // CRITICAL: Only schedule for the influencer themselves
+            guard currentUserId == currentInfluencerId else {
+                print("📱 ⏭️ ℹ️ Current user is not influencer, not scheduling notification")
+                print("📱 ⏭️ ℹ️ Current user: \(currentUserId)")
+                print("📱 ⏭️ ℹ️ Influencer: \(currentInfluencerId)")
+                return
+            }
+            
+            guard let frequencyRaw = data["promptFrequency"] as? String else {
+                print("📱 ⏭️ ❌ No prompt frequency found")
+                return
+            }
+            
+            let groupName = data["name"] as? String ?? "DIML Group"
+            let notificationsMuted = data["notificationsMuted"] as? Bool ?? false
+            
+            // Check if notifications are muted for this group
+            guard !notificationsMuted else {
+                print("📱 ⏭️ ℹ️ Notifications muted for group, not scheduling")
+                return
+            }
+            
+            print("📱 ⏭️ ✅ Current user IS the influencer - proceeding with scheduling")
+            print("📱 ⏭️ Frequency: \(frequencyRaw)")
+            print("📱 ⏭️ Group: \(groupName)")
+            
+            // Calculate next prompt time based on frequency
+            let now = Date()
+            var nextPromptTime: Date
+            
+            if frequencyRaw.contains("testing") {
+                // Testing mode: 1 minute
+                nextPromptTime = Calendar.current.date(byAdding: .minute, value: 1, to: now) ?? now
+                print("📱 ⏭️ Testing mode: 1 minute interval")
+            } else if frequencyRaw.contains("hourly") {
+                nextPromptTime = Calendar.current.date(byAdding: .hour, value: 1, to: now) ?? now
+                print("📱 ⏭️ Hourly mode: 1 hour interval")
+            } else if frequencyRaw.contains("threeHours") {
+                nextPromptTime = Calendar.current.date(byAdding: .hour, value: 3, to: now) ?? now
+                print("📱 ⏭️ Three hours mode: 3 hour interval")
+            } else if frequencyRaw.contains("sixHours") {
+                nextPromptTime = Calendar.current.date(byAdding: .hour, value: 6, to: now) ?? now
+                print("📱 ⏭️ Six hours mode: 6 hour interval")
+            } else {
+                // Default to 6 hours
+                nextPromptTime = Calendar.current.date(byAdding: .hour, value: 6, to: now) ?? now
+                print("📱 ⏭️ Default mode: 6 hour interval")
+            }
+            
+            let timeInterval = nextPromptTime.timeIntervalSince(now)
+            
+            print("📱 ⏭️ Current time: \(now)")
+            print("📱 ⏭️ Next prompt unlock time: \(nextPromptTime)")
+            print("📱 ⏭️ Time interval: \(timeInterval) seconds (\(timeInterval/60) minutes)")
+            
+            guard timeInterval > 0 else {
+                print("📱 ⏭️ ⚠️ Invalid time interval, not scheduling notification")
+                return
+            }
+            
+            // Cancel any existing prompt unlock notifications to prevent duplicates
+            UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                let existingPromptNotifications = requests.filter { 
+                    $0.identifier.contains("prompt_unlock") && $0.identifier.contains(currentInfluencerId)
+                }
+                
+                if !existingPromptNotifications.isEmpty {
+                    let identifiersToRemove = existingPromptNotifications.map { $0.identifier }
+                    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+                    print("📱 ⏭️ 🗑️ Cancelled \(identifiersToRemove.count) existing prompt unlock notifications")
+                }
+                
+                // Generate a realistic next prompt text for the notification
+                let nextPromptText = self.generateNextPromptText()
+                
+                // Schedule LOCAL notification for influencer
+                let content = UNMutableNotificationContent()
+                content.title = "🎉 New Prompt Unlocked!"
+                content.body = "Your next DIML prompt is ready to answer!"  // Generic message - don't reveal the prompt
+                content.sound = .default
+                content.badge = 1
+                content.userInfo = [
+                    "type": "prompt_unlock",
+                    "groupId": self.groupId,
+                    "groupName": groupName,
+                    "userId": currentInfluencerId,
+                    "prompt": nextPromptText,  // Real prompt for animation (hidden from notification text)
+                    "promptFrequency": frequencyRaw,
+                    "unlockTime": nextPromptTime.timeIntervalSince1970
+                ]
+                
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)
+                let identifier = "prompt_unlock_\(currentInfluencerId)_\(self.groupId)_\(nextPromptTime.timeIntervalSince1970)"
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                
+                print("📱 ⏭️ 🔧 NOTIFICATION DETAILS:")
+                print("📱 ⏭️ 🔧 Title: '\(content.title)'")
+                print("📱 ⏭️ 🔧 Body: '\(content.body)' (generic message)")
+                print("📱 ⏭️ 🔧 Hidden prompt for animation: '\(nextPromptText)'")
+                print("📱 ⏭️ 🔧 Identifier: '\(identifier)'")
+                print("📱 ⏭️ 🔧 Will fire in: \(Int(timeInterval)) seconds (\(Int(timeInterval/60)) minutes)")
+                print("📱 ⏭️ 🔧 Target user: \(currentInfluencerId)")
+                
+                UNUserNotificationCenter.current().add(request) { error in
+                    if let error = error {
+                        print("📱 ⏭️ ❌ Error scheduling prompt unlock notification: \(error.localizedDescription)")
+                    } else {
+                        print("📱 ⏭️ ✅ Successfully scheduled prompt unlock notification!")
+                        print("📱 ⏭️ ✅ Influencer \(currentInfluencerId) will be notified in \(Int(timeInterval)) seconds")
+                        print("📱 ⏭️ ✅ Notification will work when app is backgrounded")
+                        
+                        // Verify notification was scheduled
+                        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                            let justScheduled = requests.filter { $0.identifier == identifier }
+                            if justScheduled.isEmpty {
+                                print("📱 ⏭️ ❌ CRITICAL: Notification was NOT found in pending queue!")
+                            } else {
+                                print("📱 ⏭️ ✅ VERIFIED: Notification is confirmed in pending queue")
+                                if let trigger = justScheduled.first?.trigger as? UNTimeIntervalNotificationTrigger {
+                                    print("📱 ⏭️ ✅ VERIFIED: Will fire at \(trigger.nextTriggerDate() ?? Date())")
+                                }
+                            }
+                            print("📱 ⏭️ 📊 Total pending notifications: \(requests.count)")
+                        }
                     }
                 }
             }

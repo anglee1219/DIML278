@@ -84,16 +84,43 @@ struct GroupDetailView: View {
     @State private var isRefreshing = false // NEW: Show refresh indicator
     @State private var isActivelyViewingChat = false // NEW: Track if user is actively in this chat view
     
+    // Notification handling states
+    @State private var cameFromNotification = false
+    @State private var shouldTriggerNotificationUnlock = false
+    @State private var notificationPrompt = ""
+    
     private let promptManager = PromptManager.shared
     private let storage = StorageManager.shared
 
-    // Initialize the store with the group ID
+    // Default initializer for existing usage
     init(group: Group, groupStore: GroupStore) {
         self._group = State(initialValue: group)
         self.groupStore = groupStore
         self._store = StateObject(wrappedValue: EntryStore(groupId: group.id))
         // Initialize cached influencer status
         self._cachedIsInfluencer = State(initialValue: Auth.auth().currentUser?.uid == group.currentInfluencerId)
+        // Notification states
+        self._cameFromNotification = State(initialValue: false)
+        self._shouldTriggerNotificationUnlock = State(initialValue: false)
+        self._notificationPrompt = State(initialValue: "")
+    }
+    
+    // New initializer for notification handling
+    init(group: Group, groupStore: GroupStore, shouldTriggerUnlock: Bool, notificationUserInfo: [String: Any]) {
+        self._group = State(initialValue: group)
+        self.groupStore = groupStore
+        self._store = StateObject(wrappedValue: EntryStore(groupId: group.id))
+        // Initialize cached influencer status
+        self._cachedIsInfluencer = State(initialValue: Auth.auth().currentUser?.uid == group.currentInfluencerId)
+        // Notification states
+        self._cameFromNotification = State(initialValue: true)
+        self._shouldTriggerNotificationUnlock = State(initialValue: shouldTriggerUnlock)
+        self._notificationPrompt = State(initialValue: notificationUserInfo["prompt"] as? String ?? "")
+        
+        print("🔔 🎯 GroupDetailView initialized from notification")
+        print("🔔 🎯 Group: \(group.name)")
+        print("🔔 🎯 Should trigger unlock: \(shouldTriggerUnlock)")
+        print("🔔 🎯 Notification prompt: \(notificationUserInfo["prompt"] as? String ?? "")")
     }
 
     // Get the user's name from UserDefaults
@@ -541,6 +568,11 @@ struct GroupDetailView: View {
 
     private func uploadImage(_ image: UIImage) {
         print("🔥 Starting image upload...")
+        print("🔥 🔍 DEBUG: Current user ID: \(Auth.auth().currentUser?.uid ?? "nil")")
+        print("🔥 🔍 DEBUG: isInfluencer: \(isInfluencer)")
+        print("🔥 🔍 DEBUG: Current prompt: '\(currentPrompt)'")
+        print("🔥 🔍 DEBUG: Group ID: \(group.id)")
+        print("🔥 🔍 DEBUG: Group influencer ID: \(group.currentInfluencerId)")
         isUploading = true
         
         Task {
@@ -602,6 +634,10 @@ struct GroupDetailView: View {
                     // (correctly excludes the person who uploaded)
                     
                     // Schedule notification for when influencer's NEXT prompt unlocks (future)
+                    print("🔥 ⏭️ About to call scheduleNextPromptNotification after image upload")
+                    print("🔥 ⏭️ Current user ID: \(Auth.auth().currentUser?.uid ?? "nil")")
+                    print("🔥 ⏭️ isInfluencer: \(isInfluencer)")
+                    print("🔥 ⏭️ Group muted: \(group.notificationsMuted)")
                     self.scheduleNextPromptNotification()
                     
                     isUploading = false
@@ -669,6 +705,15 @@ struct GroupDetailView: View {
             // Show alert that they've already completed this prompt
             errorMessage = "You've already completed this prompt! Your next prompt will unlock in \(nextPromptCountdown.isEmpty ? "a few hours" : nextPromptCountdown)."
             showError = true
+            return
+        }
+        
+        // CRITICAL: Don't interfere with notification animations
+        if cameFromNotification && shouldTriggerNotificationUnlock {
+            print("📷 ⚠️ Delaying camera permission check - notification animation in progress")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                self.checkCameraPermission()
+            }
             return
         }
         
@@ -784,113 +829,52 @@ struct GroupDetailView: View {
         
         if timeInterval <= 0 {
             print("⏰ Next prompt time has passed - making new prompt available")
-            nextPromptCountdown = "New prompt available!"
             
-            // Only trigger unlock animation if we haven't already done so for this timing cycle
-            if !hasTriggeredUnlockForCurrentPrompt {
-                print("🎯 🎬 Setting flag for delayed prompt unlock animation")
-                hasTriggeredUnlockForCurrentPrompt = true
+            // SHOW COUNTDOWN AT ZERO FIRST for animation sequence
+            if timeInterval >= -5 { // Within 5 seconds of unlock time
+                nextPromptCountdown = "Prompt unlocking in 0s..."
                 
-                // Generate a new prompt when countdown reaches zero
-                let newPrompt = getCurrentPrompt()
-                print("🎯 🎬 getCurrentPrompt() returned: '\(newPrompt)'")
-                
-                if newPrompt != currentPrompt {
-                    print("🎯 New prompt available: '\(newPrompt)'")
-                    currentPrompt = newPrompt
-                    hasNewPromptReadyForAnimation = true
+                // Only trigger unlock animation if we haven't already done so for this timing cycle
+                if !hasTriggeredUnlockForCurrentPrompt {
+                    print("🎯 🎬 Setting flag for delayed prompt unlock animation")
+                    hasTriggeredUnlockForCurrentPrompt = true
                     
-                    // Send prompt unlock notification to influencer
-                    print("📱 🔔 Sending prompt unlock notification for new prompt")
-                    store.notifyPromptUnlock(prompt: newPrompt, influencerId: group.currentInfluencerId, groupName: group.name)
+                    // CRITICAL: Don't change currentPrompt here - preserve it for the "0s..." display
+                    // Only generate the new prompt DURING the animation, not before
                     
-                    // Only trigger animation if user is actively viewing this chat
-                    if isActivelyViewingChat {
-                        print("🎯 🎬 User is actively viewing chat - will trigger animation immediately")
-                        hasNewPromptReadyForAnimation = false // Clear flag since we're using it now
+                    // Delay the animation slightly to show the "0s..." message first
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        print("🎯 🎬 NOW generating new prompt for animation")
                         
-                        // Small delay to ensure UI is updated
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            triggerPromptUnlockAnimation(newPrompt: newPrompt)
+                        // NOW generate the new prompt for the animation
+                        let newPrompt = self.generateUniquePrompt()
+                        print("🎯 🎬 Generated new prompt for animation: '\(newPrompt)'")
+                        
+                        // Store the new prompt but don't set currentPrompt yet
+                        // The animation will handle setting currentPrompt at the right time
+                        
+                        // Send prompt unlock notification to influencer
+                        print("📱 🔔 Sending prompt unlock notification for new prompt")
+                        self.store.notifyPromptUnlock(prompt: newPrompt, influencerId: self.group.currentInfluencerId, groupName: self.group.name)
+                        
+                        // Only trigger animation if user is actively viewing this chat
+                        if self.isActivelyViewingChat {
+                            print("🎯 🎬 User is actively viewing chat - will trigger animation immediately")
+                            self.hasNewPromptReadyForAnimation = false // Clear flag since we're using it now
+                            
+                            // Trigger animation with the newly generated prompt
+                            self.triggerPromptUnlockAnimation(newPrompt: newPrompt)
+                        } else {
+                            print("🎯 🎬 User not actively viewing chat - animation will trigger when they enter")
+                            // Store for later animation when user enters
+                            self.hasNewPromptReadyForAnimation = true
+                            self.currentPrompt = newPrompt // Set here for when user enters
                         }
-                    } else {
-                        print("🎯 🎬 User not actively viewing chat - animation will trigger when they enter")
-                    }
-                    
-                    // Update prompt configuration for consistency
-                    currentPromptConfiguration = createPromptConfiguration(for: newPrompt)
-                    if let newConfig = currentPromptConfiguration {
-                        isImagePrompt = newConfig.fields.isEmpty
-                        print("🎯 Created configuration for new prompt: '\(newConfig.prompt)'")
-                    }
-                } else {
-                    print("🎯 Generated prompt is same as current, generating unique prompt with enhanced seeding")
-                    let completedCount = store.entries.count
-                    
-                    // Enhanced unique prompt generation with multiple fallback strategies
-                    var uniquePrompt: String = ""
-                    var attempts = 0
-                    let maxAttempts = 100
-                    
-                    // Strategy 1: Try different time-based seeds
-                    while attempts < maxAttempts && (uniquePrompt.isEmpty || uniquePrompt == currentPrompt) {
-                        let timeOfDay = TimeOfDay.current()
-                        let calendar = Calendar.current
-                        let today = Date()
-                        let baseDailySeed = calendar.component(.year, from: today) * 1000 + (calendar.ordinality(of: .day, in: .year, for: today) ?? 1)
-                        
-                        // Use multiple seed variations including attempt number and timestamp
-                        let timestamp = Int(Date().timeIntervalSince1970)
-                        let variationSeed = UInt64(abs(baseDailySeed)) + 
-                                           UInt64(attempts * 12345) + 
-                                           UInt64(completedCount * 6789) +
-                                           UInt64(abs(group.id.hashValue)) +
-                                           UInt64(timestamp % 10000) // Add timestamp variation
-                        
-                        var generator = SeededRandomNumberGenerator(seed: variationSeed)
-                        if let generatedPrompt = promptManager.getSeededPrompt(for: timeOfDay, using: &generator) {
-                            uniquePrompt = generatedPrompt
-                        }
-                        attempts += 1
-                        print("🎯 Attempt \(attempts): Generated '\(uniquePrompt)'")
-                    }
-                    
-                    // Strategy 2: If still no unique prompt, use curated fallbacks
-                    if uniquePrompt.isEmpty || uniquePrompt == currentPrompt {
-                        let curatedPrompts = [
-                            "What's the highlight of your day so far?",
-                            "Show us what you're up to right now",
-                            "What's bringing you joy today?",
-                            "Share a moment from your current adventure",
-                            "What's your vibe right now?",
-                            "Show us your perspective on today",
-                            "What's happening in your world?",
-                            "Share something that made you smile recently",
-                            "What's your current energy like?",
-                            "Show us what's inspiring you today"
-                        ]
-                        
-                        // Use completion count to cycle through curated prompts
-                        uniquePrompt = curatedPrompts[completedCount % curatedPrompts.count]
-                        print("🎯 Using curated prompt: '\(uniquePrompt)'")
-                    }
-                    
-                    print("🎯 Final unique prompt: '\(uniquePrompt)'")
-                    currentPrompt = uniquePrompt
-                    hasNewPromptReadyForAnimation = true
-                    isImagePrompt = true
-                    
-                    // Send prompt unlock notification to influencer for unique prompt
-                    print("📱 🔔 Sending prompt unlock notification for unique prompt")
-                    store.notifyPromptUnlock(prompt: uniquePrompt, influencerId: group.currentInfluencerId, groupName: group.name)
-                    
-                    // Update prompt configuration for the specific unique prompt
-                    currentPromptConfiguration = createPromptConfiguration(for: uniquePrompt)
-                    if let newConfig = currentPromptConfiguration {
-                        isImagePrompt = newConfig.fields.isEmpty
-                        print("🎯 Created configuration for unique prompt: '\(newConfig.prompt)'")
                     }
                 }
+                return
+            } else {
+                nextPromptCountdown = "New prompt available!"
             }
             return
         }
@@ -1151,106 +1135,173 @@ struct GroupDetailView: View {
             // Set active viewing flag immediately
             isActivelyViewingChat = true
             
+            // CRITICAL: Reset all modal/sheet states when appearing from notification
+            if cameFromNotification {
+                print("🔔 🎯 RESETTING ALL MODAL STATES FROM NOTIFICATION")
+                showCamera = false
+                showSettings = false
+                showComments = false
+                showPermissionAlert = false
+                showError = false
+                selectedEntryForComments = nil
+                
+                // CRITICAL: Also reset feedback states that might appear as sheets
+                showPromptCompletedFeedback = false
+                showNewPromptUnlockedFeedback = false
+                isRefreshing = false
+                
+                print("🔔 🎯 All modal and feedback states reset")
+            }
+            
             // Clear refresh indicator after a delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 isRefreshing = false
             }
             
-            // Always load/check daily prompt - loadDailyPrompt handles timing logic
+            // Always load/check daily prompt first
             print("🔍 Loading daily prompt...")
             let oldPrompt = currentPrompt
             loadDailyPrompt()
             print("🔍 Loaded prompt: '\(currentPrompt)'")
             
-            // Check if we have a new prompt ready for animation when entering the view
-            if isInfluencer && hasNewPromptReadyForAnimation {
-                print("🔍 🎬 NEW PROMPT READY FOR ANIMATION DETECTED!")
-                print("🔍 🎬 Current prompt: '\(currentPrompt)'")
+            // Handle notification-triggered unlock flow
+            if cameFromNotification && shouldTriggerNotificationUnlock {
+                print("🔔 🎯 === HANDLING NOTIFICATION UNLOCK FLOW ===")
+                print("🔔 🎯 Came from notification: \(cameFromNotification)")
+                print("🔔 🎯 Should trigger unlock: \(shouldTriggerNotificationUnlock)")
+                print("🔔 🎯 Notification prompt: '\(notificationPrompt)'")
+                print("🔔 🎯 Current user is influencer: \(isInfluencer)")
                 
-                // Store the current prompt before clearing the flag
-                let promptForAnimation = currentPrompt
-                hasNewPromptReadyForAnimation = false // Clear the flag
-                
-                // Show the prompt unlock feedback immediately
-                showNewPromptUnlockedFeedback = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                    showNewPromptUnlockedFeedback = false
-                }
-                
-                // Auto-scroll FIRST, then trigger animation so user can see it happen
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    print("🔄 Auto-scrolling to new prompt BEFORE animation")
-                    shouldAutoScrollToPrompt = true
+                if isInfluencer {
+                    // Check if the current prompt has been completed
+                    let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+                    print("🔔 🎯 Has completed current prompt: \(hasCompletedCurrentPrompt)")
                     
-                    // Then trigger animation after scroll completes
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        print("🔍 🎬 TRIGGERING UNLOCK ANIMATION NOW!")
-                        triggerPromptUnlockAnimation(newPrompt: promptForAnimation)
-                    }
-                }
-            } else if isInfluencer {
-                print("🔍 🎬 No animation flag set, checking for other prompt unlock scenarios...")
-                print("🔍 🎬 Reasons flag might not be set:")
-                print("🔍 🎬 - isInfluencer: \(isInfluencer)")
-                print("🔍 🎬 - hasNewPromptReadyForAnimation: \(hasNewPromptReadyForAnimation)")
-                
-                // Fallback: Check if we should trigger animation based on timing instead of flag
-                let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
-                print("🔍 🎬 - hasCompletedCurrentPrompt: \(hasCompletedCurrentPrompt)")
-                
-                if let nextPromptTime = calculateNextPromptTime() {
-                    let timeRemaining = nextPromptTime.timeIntervalSince(Date())
-                    print("🔍 🎬 Timing check - timeRemaining: \(timeRemaining) seconds")
+                    // DON'T show unlock feedback immediately - wait until after animation starts
+                    // showNewPromptUnlockedFeedback = true
                     
-                    // If time has passed and prompt not completed, this means unlock should happen
-                    if timeRemaining <= 0 && !hasCompletedCurrentPrompt && !hasTriggeredUnlockForCurrentPrompt {
-                        print("🔍 🎬 FALLBACK: Triggering animation based on timing check!")
-                        print("🔍 🎬 FALLBACK: Current prompt: '\(currentPrompt)'")
-                        
-                        // Set the triggered flag to prevent multiple triggers
-                        hasTriggeredUnlockForCurrentPrompt = true
-                        
-                        // Show the prompt unlock feedback
-                        showNewPromptUnlockedFeedback = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                            showNewPromptUnlockedFeedback = false
+                    // Step 1: Auto-scroll to the countdown timer first (increased delay to ensure view is ready)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        print("🔔 🎯 📍 Auto-scrolling to countdown timer...")
+                        withAnimation(.easeInOut(duration: 1.0)) {
+                            shouldAutoScrollToPrompt = true
                         }
                         
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            shouldAutoScrollToPrompt = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                triggerPromptUnlockAnimation(newPrompt: currentPrompt)
+                        // Step 2: After scroll completes, trigger unlock animation with vibration
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            print("🔔 🎯 🎬 TRIGGERING UNLOCK ANIMATION WITH VIBRATION!")
+                            
+                            // Heavy haptic feedback for notification unlock
+                            let unlockFeedback = UIImpactFeedbackGenerator(style: .heavy)
+                            unlockFeedback.prepare()
+                            unlockFeedback.impactOccurred()
+                            
+                            // Use notification prompt if available, otherwise current prompt
+                            let promptForAnimation = !notificationPrompt.isEmpty ? notificationPrompt : currentPrompt
+                            print("🔔 🎯 🎬 Using prompt for animation: '\(promptForAnimation)'")
+                            
+                            // Trigger the unlock animation
+                            triggerPromptUnlockAnimation(newPrompt: promptForAnimation)
+                            
+                            // ONLY NOW show the unlock feedback banner (after animation has started)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                print("🔔 🎯 📢 Now showing unlock feedback banner")
+                                showNewPromptUnlockedFeedback = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                                    showNewPromptUnlockedFeedback = false
+                                }
+                            }
+                            
+                            // CRITICAL: Reset notification flags IMMEDIATELY after animation starts
+                            // Don't wait too long or nav buttons will remain non-responsive
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                print("🔔 🎯 CLEANING UP NOTIFICATION STATE EARLY FOR NAV RESPONSIVENESS")
+                                cameFromNotification = false
+                                shouldTriggerNotificationUnlock = false
+                                notificationPrompt = ""
+                                
+                                // Force UI refresh to ensure buttons are responsive
+                                DispatchQueue.main.async {
+                                    print("🔔 🎯 FORCING UI REFRESH FOR BUTTON RESPONSIVENESS")
+                                    // Clear any modal/sheet states that might interfere
+                                    showCamera = false
+                                    showSettings = false
+                                    showComments = false
+                                    showPermissionAlert = false
+                                    showError = false
+                                    selectedEntryForComments = nil
+                                }
                             }
                         }
-                    } else {
-                        print("🔍 🎬 FALLBACK: Not triggering - timeRemaining: \(timeRemaining), hasCompleted: \(hasCompletedCurrentPrompt), hasTriggered: \(hasTriggeredUnlockForCurrentPrompt)")
                     }
                 } else {
-                    print("🔍 🎬 FALLBACK: No next prompt time calculated")
-                }
-                
-                // Standard check for prompt changes (existing logic)
-                if currentPrompt != oldPrompt && !currentPrompt.isEmpty && !oldPrompt.isEmpty {
-                    print("🔍 New prompt detected after timing check: '\(currentPrompt)', triggering animation")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        triggerPromptUnlockAnimation(newPrompt: currentPrompt)
-                    }
-                }
-                
-                // Auto-scroll to active prompt for influencers when main view appears (existing logic)
-                print("🔄 Auto-scroll check: isInfluencer=\(isInfluencer), currentPrompt='\(currentPrompt)', hasCompleted=\(hasCompletedCurrentPrompt)")
-                
-                if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
-                    print("🔄 Scheduling auto-scroll to activePrompt in 0.8 seconds")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        print("🔄 Triggering auto-scroll...")
+                    print("🔔 🎯 ⚠️ User is not influencer - just scroll to show content")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                         shouldAutoScrollToPrompt = true
                     }
-                } else {
-                    print("🔄 Auto-scroll skipped: prompt completed or empty")
+                    // Reset notification flags for non-influencers immediately
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        print("🔔 🎯 CLEANING UP NOTIFICATION STATE FOR NON-INFLUENCER")
+                        cameFromNotification = false
+                        shouldTriggerNotificationUnlock = false
+                        notificationPrompt = ""
+                    }
                 }
             } else {
-                print("🔄 Auto-scroll skipped: not influencer")
+                // Regular flow (not from notification)
+                print("🔍 🎬 Regular onAppear flow (not from notification)")
+                
+                // Check if we have a new prompt ready for animation when entering the view
+                if isInfluencer && hasNewPromptReadyForAnimation {
+                    print("🔍 🎬 NEW PROMPT READY FOR ANIMATION DETECTED!")
+                    print("🔍 🎬 Current prompt: '\(currentPrompt)'")
+                    
+                    // Store the current prompt before clearing the flag
+                    let promptForAnimation = currentPrompt
+                    hasNewPromptReadyForAnimation = false // Clear the flag
+                    
+                    // Show the prompt unlock feedback immediately
+                    showNewPromptUnlockedFeedback = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                        showNewPromptUnlockedFeedback = false
+                    }
+                    
+                    // Auto-scroll FIRST, then trigger animation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        print("🔄 Auto-scrolling to new prompt BEFORE animation")
+                        shouldAutoScrollToPrompt = true
+                        
+                        // Then trigger animation after scroll completes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            print("🔍 🎬 TRIGGERING UNLOCK ANIMATION NOW!")
+                            triggerPromptUnlockAnimation(newPrompt: promptForAnimation)
+                        }
+                    }
+                } else if isInfluencer {
+                    // Check if prompt changed (standard logic)
+                    if currentPrompt != oldPrompt && !currentPrompt.isEmpty && !oldPrompt.isEmpty {
+                        print("🔍 New prompt detected: '\(currentPrompt)', triggering animation")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            triggerPromptUnlockAnimation(newPrompt: currentPrompt)
+                        }
+                    }
+                    
+                    // Auto-scroll to active prompt for influencers when main view appears
+                    let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+                    print("🔄 Auto-scroll check: currentPrompt='\(currentPrompt)', hasCompleted=\(hasCompletedCurrentPrompt)")
+                    
+                    if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
+                        print("🔄 Scheduling auto-scroll to activePrompt in 1.0 seconds")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            print("🔄 Triggering auto-scroll...")
+                            shouldAutoScrollToPrompt = true
+                        }
+                    } else {
+                        print("🔄 Auto-scroll skipped: prompt completed or empty")
+                    }
+                } else {
+                    print("🔄 Auto-scroll skipped: not influencer")
+                }
             }
             
             // Start the countdown timer
@@ -1266,6 +1317,28 @@ struct GroupDetailView: View {
             
             // Stop countdown timer when leaving view
             stopCountdownTimer()
+            
+            // CRITICAL: Clean up all notification state when leaving view
+            if cameFromNotification || shouldTriggerNotificationUnlock {
+                print("🔍 🎯 CLEANING UP NOTIFICATION STATE ON DISAPPEAR")
+                cameFromNotification = false
+                shouldTriggerNotificationUnlock = false
+                notificationPrompt = ""
+                
+                // Reset animation states
+                showNewPromptCard = false
+                hasUnlockedNewPrompt = false
+                isUnlockingPrompt = false
+                animateCountdownRefresh = false
+                hasTriggeredUnlockForCurrentPrompt = false
+                hasNewPromptReadyForAnimation = false
+                showPromptCompletedFeedback = false
+                showNewPromptUnlockedFeedback = false
+                shouldAutoScrollToPrompt = false
+            }
+            
+            // Set active viewing flag to false
+            isActivelyViewingChat = false
         }
         .onChange(of: groupStore.groups) { newGroups in
             // Update local group state when GroupStore updates - with safety checks
@@ -1404,8 +1477,33 @@ struct GroupDetailView: View {
             // Main top bar
             HStack {
                 Button(action: {
-                    print("🔴 Back button tapped - dismissing GroupDetailView")
-                    dismiss()
+                    print("🔴 Back button tapped - sending reset navigation notification")
+                    
+                    // CRITICAL: Always reset MainTabView navigation state via notification
+                    print("🔴 🎯 Sending ResetMainTabNavigation notification")
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ResetMainTabNavigation"),
+                        object: nil
+                    )
+                    
+                    // Clean up notification state
+                    if cameFromNotification {
+                        print("🔴 🎯 Cleaning up notification state")
+                        cameFromNotification = false
+                        shouldTriggerNotificationUnlock = false
+                        notificationPrompt = ""
+                    }
+                    
+                    // Reset all modal states to prevent conflicts
+                    showCamera = false
+                    showSettings = false
+                    showComments = false
+                    showPermissionAlert = false
+                    showError = false
+                    selectedEntryForComments = nil
+                    
+                    // DON'T use dismiss() - it doesn't work with our navigation setup
+                    // The notification will handle returning to GroupListView
                 }) {
                     Image(systemName: "chevron.left")
                         .font(.title3)
@@ -1422,6 +1520,13 @@ struct GroupDetailView: View {
                 Spacer()
 
                 Button(action: {
+                    // Clear notification state before showing settings
+                    if cameFromNotification {
+                        print("🔴 🎯 Clearing notification state before settings")
+                        cameFromNotification = false
+                        shouldTriggerNotificationUnlock = false
+                        notificationPrompt = ""
+                    }
                     showSettings = true
                 }) {
                     Image(systemName: "slider.horizontal.3")
@@ -1525,20 +1630,62 @@ struct GroupDetailView: View {
                         get: { currentTab },
                         set: { newTab in
                             print("🔴 Bottom nav tab changed to: \(newTab)")
+                            
+                            // CRITICAL: Clear ALL notification and interference states immediately
+                            print("🔴 🎯 CLEARING ALL INTERFERING STATES FOR NAVIGATION")
+                            cameFromNotification = false
+                            shouldTriggerNotificationUnlock = false
+                            notificationPrompt = ""
+                            
+                            // Also clear animation states that might interfere
+                            isUnlockingPrompt = false
+                            showNewPromptCard = false
+                            hasUnlockedNewPrompt = false
+                            animateCountdownRefresh = false
+                            showPromptCompletedFeedback = false
+                            showNewPromptUnlockedFeedback = false
+                            
+                            // Clear modal states
+                            showCamera = false
+                            showSettings = false
+                            showComments = false
+                            showPermissionAlert = false
+                            showError = false
+                            selectedEntryForComments = nil
+                            
                             if newTab == .camera {
                             checkCameraPermission()
                             } else if newTab == .home {
-                                print("🔴 Home tab selected - dismissing GroupDetailView")
-                                dismiss()
+                                print("🔴 Home tab selected - sending reset navigation notification")
+                                // Use notification instead of dismiss()
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("ResetMainTabNavigation"),
+                                    object: nil
+                                )
                             } else if newTab == .profile {
-                                print("🔴 Profile tab selected - dismissing GroupDetailView")
-                                dismiss()
+                                print("🔴 Profile tab selected - sending reset navigation notification")
+                                // Use notification instead of dismiss()
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("ResetMainTabNavigation"),
+                                    object: nil
+                                )
                             }
                             currentTab = newTab
                         }
                     ),
                     onCameraTap: {
                         print("Camera tap triggered")
+                        // Clear notification state before camera interaction
+                        print("🔴 🎯 Clearing notification state before camera")
+                        cameFromNotification = false
+                        shouldTriggerNotificationUnlock = false
+                        notificationPrompt = ""
+                        
+                        // Clear animation states
+                        isUnlockingPrompt = false
+                        showNewPromptCard = false
+                        animateCountdownRefresh = false
+                        
                         checkCameraPermission()
                     },
                     isInfluencer: isInfluencer,
@@ -1593,9 +1740,42 @@ struct GroupDetailView: View {
         // Sort entries by timestamp (earliest first)
         let sortedEntries = store.entries.sorted { $0.timestamp < $1.timestamp }
         
-        return ForEach(sortedEntries) { entry in
-            entryView(entry: entry)
+        return ForEach(Array(sortedEntries.enumerated()), id: \.element.id) { index, entry in
+            entryView(entry: entry, entryIndex: index, sortedEntries: sortedEntries)
         }
+    }
+    
+    // Helper function to check if user has reacted to all previous entries
+    private func hasReactedToPreviousEntries(upToIndex index: Int, sortedEntries: [DIMLEntry]) -> Bool {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+        
+        // Influencer can always see all entries
+        if isInfluencer { return true }
+        
+        // Check if user has reacted to ALL previous entries
+        for i in 0..<index {
+            let previousEntry = sortedEntries[i]
+            let hasReacted = previousEntry.userReactions.contains { $0.userId == currentUserId }
+            if !hasReacted {
+                return false // User hasn't reacted to this previous entry
+            }
+        }
+        
+        return true // User has reacted to all previous entries (or this is the first entry)
+    }
+    
+    // Helper function to check if an entry should be blurred
+    private func shouldBlurEntry(entry: DIMLEntry, entryIndex: Int, sortedEntries: [DIMLEntry]) -> Bool {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+        
+        // Influencer can always see all entries
+        if isInfluencer { return false }
+        
+        // Don't blur the first entry (index 0)
+        if entryIndex == 0 { return false }
+        
+        // Blur if user hasn't reacted to all previous entries
+        return !hasReactedToPreviousEntries(upToIndex: entryIndex, sortedEntries: sortedEntries)
     }
     
     private var currentPromptAreaView: some View {
@@ -1729,7 +1909,12 @@ struct GroupDetailView: View {
                     // (correctly excludes the person who uploaded)
                     
                     // Schedule notification for when influencer's NEXT prompt unlocks (future)
+                    print("📝 ⏭️ About to call scheduleNextPromptNotification after text response")
+                    print("📝 ⏭️ Current user ID: \(Auth.auth().currentUser?.uid ?? "nil")")
+                    print("📝 ⏭️ isInfluencer: \(isInfluencer)")
+                    print("📝 ⏭️ Group muted: \(group.notificationsMuted)")
                     self.scheduleNextPromptNotification()
+                    
                     
                     print("📝 Text submission completed successfully")
                 }
@@ -1832,15 +2017,42 @@ struct GroupDetailView: View {
             let identifier = "prompt_unlocked_local_\(currentUserId)_\(self.group.id)_\(nextPromptTime.timeIntervalSince1970)"
             let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
             
+            print("📱 ⏭️ 🔧 DETAILED NOTIFICATION DEBUG:")
+            print("📱 ⏭️ 🔧 Title: '\(content.title)'")
+            print("📱 ⏭️ 🔧 Body: '\(content.body)'")
+            print("📱 ⏭️ 🔧 Identifier: '\(identifier)'")
+            print("📱 ⏭️ 🔧 Time interval: \(timeInterval) seconds")
+            print("📱 ⏭️ 🔧 Will fire at: \(nextPromptTime)")
+            
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
                     print("📱 ⏭️ ❌ Error scheduling local prompt unlock notification: \(error)")
+                    print("📱 ⏭️ ❌ Full error details: \(error.localizedDescription)")
                 } else {
                     print("📱 ⏭️ ✅ Successfully scheduled LOCAL prompt unlock notification")
                     print("📱 ⏭️ ✅ Will fire in \(Int(timeInterval)) seconds at \(nextPromptTime)")
                     print("📱 ⏭️ ✅ Notification will show: '\(nextPromptText)'")
                     print("📱 ⏭️ ✅ Works when app is backgrounded (but not when completely terminated)")
                     print("📱 ⏭️ ✅ Notification ID: \(identifier)")
+                    
+                    // VERIFY: Double-check that notification was actually scheduled
+                    UNUserNotificationCenter.current().getPendingNotificationRequests { verifyRequests in
+                        let justScheduled = verifyRequests.filter { $0.identifier == identifier }
+                        if justScheduled.isEmpty {
+                            print("📱 ⏭️ ❌ CRITICAL: Notification was NOT found in pending queue after scheduling!")
+                        } else {
+                            print("📱 ⏭️ ✅ VERIFIED: Notification is confirmed in pending queue")
+                            if let trigger = justScheduled.first?.trigger as? UNTimeIntervalNotificationTrigger {
+                                print("📱 ⏭️ ✅ VERIFIED: Will fire at \(trigger.nextTriggerDate() ?? Date())")
+                            }
+                        }
+                        
+                        // Show total pending notifications
+                        print("📱 ⏭️ 📊 Total pending notifications: \(verifyRequests.count)")
+                        for request in verifyRequests {
+                            print("📱 ⏭️ 📊 - Pending: \(request.identifier)")
+                        }
+                    }
                 }
             }
         }
@@ -1866,11 +2078,130 @@ struct GroupDetailView: View {
         }
     }
     
-    private func sendImmediatePromptUnlockNotification(prompt: String) {
-        // REMOVED: This method was causing duplicate notifications
-        // Upload notifications are now handled exclusively by EntryStore.sendDIMLUploadNotification
-        // which properly filters out the uploader and only notifies other group members
-        print("📱 Immediate prompt unlock notifications disabled to prevent duplicates")
+    // MARK: - Testing Functions
+    
+    private func testNotificationSystem() {
+        print("🧪 === TESTING NOTIFICATION SYSTEM ===")
+        
+        // First check notification permissions
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                print("🧪 📱 === NOTIFICATION PERMISSION STATUS ===")
+                print("🧪 📱 Authorization Status: \(settings.authorizationStatus.rawValue)")
+                print("🧪 📱 Alert Setting: \(settings.alertSetting.rawValue)")
+                print("🧪 📱 Badge Setting: \(settings.badgeSetting.rawValue)")
+                print("🧪 📱 Sound Setting: \(settings.soundSetting.rawValue)")
+                print("🧪 📱 Lock Screen Setting: \(settings.lockScreenSetting.rawValue)")
+                print("🧪 📱 Notification Center Setting: \(settings.notificationCenterSetting.rawValue)")
+                
+                switch settings.authorizationStatus {
+                case .authorized:
+                    print("🧪 📱 ✅ Notifications are AUTHORIZED - proceeding with test")
+                    self.testLocalNotification()
+                    self.testFCMPushNotification()
+                case .denied:
+                    print("🧪 📱 ❌ Notifications are DENIED - user needs to enable in Settings")
+                case .notDetermined:
+                    print("🧪 📱 ⚠️ Notifications not determined - requesting permission")
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                        if granted {
+                            print("🧪 📱 ✅ Permission granted - trying test again")
+                            DispatchQueue.main.async {
+                                self.testLocalNotification()
+                                self.testFCMPushNotification()
+                            }
+                        } else {
+                            print("🧪 📱 ❌ Permission denied: \(error?.localizedDescription ?? "unknown")")
+                        }
+                    }
+                case .provisional:
+                    print("🧪 📱 ⚠️ Provisional authorization - proceeding with test")
+                    self.testLocalNotification()
+                    self.testFCMPushNotification()
+                case .ephemeral:
+                    print("🧪 📱 ⚠️ Ephemeral authorization - proceeding with test")
+                    self.testLocalNotification()
+                    self.testFCMPushNotification()
+                @unknown default:
+                    print("🧪 📱 ❓ Unknown authorization status")
+                    self.testLocalNotification()
+                    self.testFCMPushNotification()
+                }
+            }
+        }
+    }
+    
+    private func testLocalNotification() {
+        print("🧪 📱 Testing LOCAL notification...")
+        
+        // Check how many pending notifications we have
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            print("🧪 📱 Current pending notifications: \(requests.count)")
+            for request in requests {
+                print("🧪 📱 - Pending: \(request.identifier)")
+            }
+        }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "🧪 Test Notification"
+        content.body = "If you see this, notifications work! Tap to open app."
+        content.sound = .default
+        content.badge = NSNumber(value: 1)
+        content.userInfo = [
+            "type": "test_local",
+            "timestamp": Date().timeIntervalSince1970
+        ]
+        
+        // Schedule for 3 seconds from now (shorter delay for testing)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3.0, repeats: false)
+        let identifier = "test_local_\(Int(Date().timeIntervalSince1970))"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("🧪 📱 ❌ Local notification test failed: \(error.localizedDescription)")
+                print("🧪 📱 ❌ Full error: \(error)")
+            } else {
+                print("🧪 📱 ✅ Local notification scheduled successfully!")
+                print("🧪 📱 ✅ Identifier: \(identifier)")
+                print("🧪 📱 ✅ Will fire in 3 seconds")
+                print("🧪 📱 💡 NOW: Press home button to background the app!")
+                print("🧪 📱 💡 You should see notification in 3 seconds")
+                
+                // Verify it was actually scheduled
+                UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                    let testRequests = requests.filter { $0.identifier == identifier }
+                    if testRequests.isEmpty {
+                        print("🧪 📱 ❌ WARNING: Notification was NOT actually scheduled!")
+                    } else {
+                        print("🧪 📱 ✅ Verified: Notification is in pending queue")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func testFCMPushNotification() {
+        print("🧪 🚀 Testing FCM PUSH notification...")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("🧪 🚀 ❌ No authenticated user for FCM test")
+            return
+        }
+        
+        // Send a test push notification via Firebase Functions (if you have them set up)
+        // For now, we'll just verify FCM token is available
+        Messaging.messaging().token { token, error in
+            if let error = error {
+                print("🧪 🚀 ❌ FCM token error: \(error)")
+            } else if let token = token {
+                print("🧪 🚀 ✅ FCM token available: \(String(token.suffix(8)))")
+                print("🧪 🚀 💡 FCM push notifications should work when app is completely terminated!")
+                print("🧪 🚀 💡 You can test this by completely closing the app and triggering a notification")
+            } else {
+                print("🧪 🚀 ⚠️ No FCM token available")
+            }
+        }
     }
     
     private var nonInfluencerContentView: some View {
@@ -2248,116 +2579,24 @@ struct GroupDetailView: View {
     }
     
     private var influencerEntryView: some View {
-        // Find the most recent entry by the influencer (within last 24 hours for relevance)
-        let oneDayAgo = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
-        let influencerRecentEntry = store.entries
-            .filter { entry in
-                entry.userId == group.currentInfluencerId && entry.timestamp > oneDayAgo
-            }
-            .max(by: { $0.timestamp < $1.timestamp })
+        // Get all entries by the influencer, sorted by timestamp (earliest first)
+        let influencerEntries = store.entries
+            .filter { $0.userId == group.currentInfluencerId }
+            .sorted { $0.timestamp < $1.timestamp }
         
         print("🔍 influencerEntryView: Looking for influencer entries")
         print("🔍 Total entries in store: \(store.entries.count)")
         print("🔍 Current influencer ID: \(group.currentInfluencerId)")
-        print("🔍 Entries by influencer: \(store.entries.filter { $0.userId == group.currentInfluencerId }.count)")
-        print("🔍 Recent entries by influencer: \(store.entries.filter { $0.userId == group.currentInfluencerId && $0.timestamp > oneDayAgo }.count)")
-        if let recentEntry = influencerRecentEntry {
-            print("🔍 Found recent influencer entry: '\(recentEntry.prompt)' at \(recentEntry.timestamp)")
-        } else {
-            print("🔍 No recent influencer entry found")
-        }
+        print("🔍 Entries by influencer: \(influencerEntries.count)")
         
-        if let entry = influencerRecentEntry {
-            // Show influencer's most recent entry
+        if !influencerEntries.isEmpty {
+            // Show all influencer entries with progressive unlock
             return AnyView(
-                VStack(alignment: .leading, spacing: 0) {
-                    // Prompt text at the top
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(entry.prompt)
-                            .font(.custom("Fredoka-Medium", size: 16))
-                            .foregroundColor(.black)
-                            .multilineTextAlignment(.leading)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
-                    
-                    // Image in the middle
-                    if let imageURL = entry.imageURL {
-                        AsyncImage(url: URL(string: imageURL)) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(height: entry.frameSize.height)
-                                    .cornerRadius(12)
-                                    .clipped()
-                                    .onAppear {
-                                        print("🖼️ Image loaded successfully from: \(imageURL)")
-                                    }
-                            case .failure(let error):
-                                VStack {
-                                    Image(systemName: "photo")
-                                        .foregroundColor(.gray)
-                                    Text("Failed to load image")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                }
-                                .frame(height: entry.frameSize.height)
-                                .onAppear {
-                                    print("🖼️ Image load failed: \(error.localizedDescription)")
-                                    print("🖼️ URL was: \(imageURL)")
-                                }
-                            case .empty:
-                                ProgressView()
-                                    .frame(height: entry.frameSize.height)
-                                    .onAppear {
-                                        print("🖼️ Loading image from: \(imageURL)")
-                                    }
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    } else {
-                        Text("No image URL")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .frame(height: 100)
-                            .onAppear {
-                                print("🖼️ Entry has no imageURL. Entry: \(entry.id)")
-                            }
-                    }
-                    
-                    // Response text at the bottom
-                    if !entry.response.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(entry.response)
-                                .font(.custom("Fredoka-Regular", size: 16))
-                                .foregroundColor(.black)
-                                .multilineTextAlignment(.leading)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                        .padding(.bottom, 16)
+                VStack(spacing: 16) {
+                    ForEach(Array(influencerEntries.enumerated()), id: \.element.id) { index, entry in
+                        influencerEntryCard(entry: entry, entryIndex: index, sortedEntries: influencerEntries)
                     }
                 }
-                .background(Color(red: 1.0, green: 0.95, blue: 0.80))
-                .cornerRadius(15)
-                .padding(.horizontal)
-                .overlay(
-                    // New reaction button positioned in bottom right corner
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
-                                .padding(.trailing, 20)
-                                .padding(.bottom, 20)
-                        }
-                    }
-                )
             )
         } else {
             // Influencer hasn't posted yet - show waiting message
@@ -2390,28 +2629,158 @@ struct GroupDetailView: View {
         }
     }
     
-    private func entryView(entry: DIMLEntry) -> some View {
+    // Helper function to display individual influencer entry cards with progressive unlock
+    private func influencerEntryCard(entry: DIMLEntry, entryIndex: Int, sortedEntries: [DIMLEntry]) -> some View {
+        let isBlurred = shouldBlurEntry(entry: entry, entryIndex: entryIndex, sortedEntries: sortedEntries)
+        
+        return VStack(alignment: .leading, spacing: 0) {
+            // Prompt text at the top
+            VStack(alignment: .leading, spacing: 6) {
+                Text(entry.prompt)
+                    .font(.custom("Fredoka-Medium", size: 16))
+                    .foregroundColor(.black)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            
+            // Image in the middle
+            if let imageURL = entry.imageURL {
+                AsyncImage(url: URL(string: imageURL)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(height: entry.frameSize.height)
+                            .cornerRadius(12)
+                            .clipped()
+                    case .failure(_):
+                        VStack {
+                            Image(systemName: "photo")
+                                .foregroundColor(.gray)
+                            Text("Failed to load image")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                        .frame(height: entry.frameSize.height)
+                    case .empty:
+                        ProgressView()
+                            .frame(height: entry.frameSize.height)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            
+            // Response text at the bottom
+            if !entry.response.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(entry.response)
+                        .font(.custom("Fredoka-Regular", size: 16))
+                        .foregroundColor(.black)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
+            }
+        }
+        .background(Color(red: 1.0, green: 0.95, blue: 0.80))
+        .cornerRadius(15)
+        .padding(.horizontal)
+        .opacity(isBlurred ? 0.3 : 1.0) // Apply blur opacity
+        .blur(radius: isBlurred ? 8 : 0) // Apply blur effect
+        .overlay(
+            ZStack {
+                if isBlurred {
+                    // Lock overlay for blurred entries
+                    VStack(spacing: 8) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(.gray)
+                        
+                        Text("React to unlock")
+                            .font(.custom("Fredoka-Medium", size: 14))
+                            .foregroundColor(.gray)
+                        
+                        Text("React to the previous post to see this one")
+                            .font(.custom("Fredoka-Regular", size: 12))
+                            .foregroundColor(.gray.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(12)
+                    .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+                } else {
+                    // Reaction button positioned in bottom right corner (only for unlocked entries)
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 20)
+                        }
+                    }
+                }
+            }
+        )
+        .disabled(isBlurred) // Disable interaction for locked entries
+    }
+    
+    private func entryView(entry: DIMLEntry, entryIndex: Int, sortedEntries: [DIMLEntry]) -> some View {
         // Create the same configuration that would have been used for this entry
         let entryConfiguration = getEntryConfigurationMatchingPrompt(for: entry)
+        let isBlurred = shouldBlurEntry(entry: entry, entryIndex: entryIndex, sortedEntries: sortedEntries)
         
         // Display completed entry using the same PromptCard styling with reaction button
         return PromptCard(
             configuration: entryConfiguration,
             onComplete: nil // No completion handler for completed entries
         )
-        .opacity(0.9) // Slightly dimmed to show it's completed
+        .opacity(isBlurred ? 0.3 : 0.9) // More dramatic opacity for locked entries
+        .blur(radius: isBlurred ? 8 : 0) // Add blur effect for locked entries
         .overlay(
-            // Add reaction button positioned in bottom right corner (consistent with influencer post)
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 20)
+            ZStack {
+                if isBlurred {
+                    // Lock overlay for blurred entries
+                    VStack(spacing: 8) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(.gray)
+                        
+                        Text("React to unlock")
+                            .font(.custom("Fredoka-Medium", size: 14))
+                            .foregroundColor(.gray)
+                        
+                        Text("React to the previous post to see this one")
+                            .font(.custom("Fredoka-Regular", size: 12))
+                            .foregroundColor(.gray.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(12)
+                    .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+                } else {
+                    // Add reaction button positioned in bottom right corner (only for unlocked entries)
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            ReactionButton(entryId: entry.id, entryStore: store, groupMembers: group.members)
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 20)
+                        }
+                    }
                 }
             }
         )
+        .disabled(isBlurred) // Disable interaction for locked entries
     }
     
     private func getEntryConfigurationMatchingPrompt(for entry: DIMLEntry) -> PromptConfiguration {
@@ -2493,6 +2862,64 @@ struct GroupDetailView: View {
     }
 
     // MARK: - Helper Methods
+    
+    // MARK: - Generate Unique Prompt Helper
+    
+    private func generateUniquePrompt() -> String {
+        print("🎯 generateUniquePrompt called")
+        let completedCount = store.entries.count
+        
+        // Enhanced unique prompt generation with multiple fallback strategies
+        var uniquePrompt: String = ""
+        var attempts = 0
+        let maxAttempts = 100
+        
+        // Strategy 1: Try different time-based seeds
+        while attempts < maxAttempts && (uniquePrompt.isEmpty || uniquePrompt == currentPrompt) {
+            let timeOfDay = TimeOfDay.current()
+            let calendar = Calendar.current
+            let today = Date()
+            let baseDailySeed = calendar.component(.year, from: today) * 1000 + (calendar.ordinality(of: .day, in: .year, for: today) ?? 1)
+            
+            // Use multiple seed variations including attempt number and timestamp
+            let timestamp = Int(Date().timeIntervalSince1970)
+            let variationSeed = UInt64(abs(baseDailySeed)) + 
+                               UInt64(attempts * 12345) + 
+                               UInt64(completedCount * 6789) +
+                               UInt64(abs(group.id.hashValue)) +
+                               UInt64(timestamp % 10000) // Add timestamp variation
+            
+            var generator = SeededRandomNumberGenerator(seed: variationSeed)
+            if let generatedPrompt = promptManager.getSeededPrompt(for: timeOfDay, using: &generator) {
+                uniquePrompt = generatedPrompt
+            }
+            attempts += 1
+            print("🎯 Attempt \(attempts): Generated '\(uniquePrompt)'")
+        }
+        
+        // Strategy 2: If still no unique prompt, use curated fallbacks
+        if uniquePrompt.isEmpty || uniquePrompt == currentPrompt {
+            let curatedPrompts = [
+                "What's the highlight of your day so far?",
+                "Show us what you're up to right now",
+                "What's bringing you joy today?",
+                "Share a moment from your current adventure",
+                "What's your vibe right now?",
+                "Show us your perspective on today",
+                "What's happening in your world?",
+                "Share something that made you smile recently",
+                "What's your current energy like?",
+                "Show us what's inspiring you today"
+            ]
+            
+            // Use completion count to cycle through curated prompts
+            uniquePrompt = curatedPrompts[completedCount % curatedPrompts.count]
+            print("🎯 Using curated prompt: '\(uniquePrompt)'")
+        }
+        
+        print("🎯 Final unique prompt: '\(uniquePrompt)'")
+        return uniquePrompt
+    }
 }
 
 // MARK: - Debug and Testing Methods
@@ -2531,20 +2958,66 @@ struct GroupDetailView_Previews: PreviewProvider {
 struct GroupDetailViewWrapper: View {
     let groupId: String
     @ObservedObject var groupStore: GroupStore
+    let shouldTriggerUnlock: Bool
+    let notificationUserInfo: [String: Any]
+    
+    // Default initializer for existing usage
+    init(groupId: String, groupStore: GroupStore) {
+        self.groupId = groupId
+        self.groupStore = groupStore
+        self.shouldTriggerUnlock = false
+        self.notificationUserInfo = [:]
+    }
+    
+    // New initializer for notification handling
+    init(groupId: String, groupStore: GroupStore, shouldTriggerUnlock: Bool, notificationUserInfo: [String: Any]) {
+        self.groupId = groupId
+        self.groupStore = groupStore
+        self.shouldTriggerUnlock = shouldTriggerUnlock
+        self.notificationUserInfo = notificationUserInfo
+    }
     
     var body: some View {
         if let group = groupStore.getGroup(withId: groupId) {
-            GroupDetailView(group: group, groupStore: groupStore)
+            GroupDetailView(
+                group: group, 
+                groupStore: groupStore,
+                shouldTriggerUnlock: shouldTriggerUnlock,
+                notificationUserInfo: notificationUserInfo
+            )
         } else {
             // Group not found - show error or navigate back
-            VStack {
+            VStack(spacing: 20) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 50))
+                    .foregroundColor(.orange)
+                
                 Text("Group not found")
-                    .font(.title)
+                    .font(.title2)
                     .foregroundColor(.gray)
+                
+                Text("This group may have been deleted or you may no longer be a member.")
+                    .font(.body)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
                 Button("Go Back") {
-                    // This will be handled by the navigation
+                    print("🔴 Group not found - sending reset navigation notification")
+                    // Send reset navigation notification to return to main tab view
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ResetMainTabNavigation"),
+                        object: nil
+                    )
                 }
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(width: 120, height: 44)
+                .background(Color.blue)
+                .cornerRadius(8)
             }
+            .padding()
+            .background(Color(red: 1, green: 0.989, blue: 0.93))
         }
     }
 }
