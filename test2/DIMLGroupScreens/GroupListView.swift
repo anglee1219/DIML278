@@ -293,13 +293,15 @@ struct GroupListView: View {
                 // ✅ Reusable Top Nav
                 TopNavBar(showsMenu: false)
                 
-                // Title and Action Menu
-                HStack {
+                // Title and Action Menu - Fixed spacing and alignment
+                HStack(alignment: .center) {
                     Text("Your Circles")
                         .font(.custom("Fredoka-Medium", size: 32))
                         .foregroundColor(Color(red: 0.157, green: 0.212, blue: 0.094))
                     
                     Spacer()
+                    
+                    // Cleaner plus button with friend indicator
                     Menu {
                         Button("Create a Circle") {
                             showingCreateGroup = true
@@ -311,45 +313,41 @@ struct GroupListView: View {
                         ZStack {
                             Image(systemName: "plus.circle")
                                 .resizable()
-                                .frame(width: 25, height: 25)
+                                .frame(width: 26, height: 26)
                                 .foregroundColor(.gray)
                             
-                            // Small friend indicator badge
-                            VStack {
-                                HStack {
-                                    Spacer()
+                            // Friend indicator badge - better positioned
+                            Circle()
+                                .fill(Color.blue)
+                                .frame(width: 10, height: 10)
+                                .overlay(
                                     Circle()
-                                        .fill(Color.blue)
-                                        .frame(width: 8, height: 8)
-                                        .overlay(
-                                            Image(systemName: "person.badge.plus")
-                                                .font(.system(size: 4))
-                                                .foregroundColor(.white)
-                                        )
-                                }
-                                Spacer()
-                            }
-                            .offset(x: 8, y: -8)
+                                        .fill(Color.white)
+                                        .frame(width: 6, height: 6)
+                                )
+                                .offset(x: 10, y: -10)
                         }
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 4)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
                 
-                // Search Bar
+                // Search Bar - improved spacing
                 HStack {
                     TextField("Search", text: $searchText)
                         .focused($isSearchFocused)
-                        .padding(5)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                         .background(Color.gray.opacity(0.15))
-                        .cornerRadius(6)
+                        .cornerRadius(8)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 10)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
                 
+                // Divider - cleaner appearance
                 Divider()
-                    .padding(.top, 10)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
                 
                 // Main Content
                 if groupStore.groups.isEmpty {

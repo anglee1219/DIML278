@@ -10,7 +10,11 @@ class FriendNotificationManager: ObservableObject {
     private var friendRequestListener: ListenerRegistration?
     
     private init() {
-        startListening()
+        // DISABLED: Local notifications for friend requests should not be used
+        // since they only appear on the current device and cause notifications
+        // to go to the sender instead of the recipient
+        // startListening()
+        print("🔔 FriendNotificationManager: Local notifications disabled - using FCM only")
     }
     
     deinit {
@@ -18,6 +22,8 @@ class FriendNotificationManager: ObservableObject {
     }
     
     private func startListening() {
+        // DISABLED: This was causing notifications to go to the wrong user
+        /*
         guard let currentUserId = Auth.auth().currentUser?.uid else { return }
         
         // Listen for new friend requests
@@ -46,9 +52,12 @@ class FriendNotificationManager: ObservableObject {
                     }
                 }
             }
+        */
     }
     
     private func getSenderNameAndNotify(senderId: String) {
+        // DISABLED: No longer sending local notifications
+        /*
         db.collection("users").document(senderId).getDocument { [weak self] document, error in
             guard let data = document?.data() else { return }
             
@@ -58,9 +67,13 @@ class FriendNotificationManager: ObservableObject {
                 self?.sendFriendRequestNotification(senderName: senderName)
             }
         }
+        */
     }
     
     private func sendFriendRequestNotification(senderName: String) {
+        // DISABLED: Local notifications only appear on current device
+        // This was causing notifications to go to sender instead of recipient
+        /*
         let content = UNMutableNotificationContent()
         content.title = "🤝 New Friend Request"
         content.body = "\(senderName) wants to be your friend!"
@@ -84,6 +97,8 @@ class FriendNotificationManager: ObservableObject {
                 print("🔔 ✅ Friend request notification sent")
             }
         }
+        */
+        print("🔔 FriendNotificationManager: Local notification disabled - using FCM only")
     }
     
     func clearFriendRequestNotifications() {
