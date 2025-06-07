@@ -95,17 +95,10 @@ struct OnboardingTutorialView: View {
                 .padding(.horizontal, 30)
             }
         }
-        .tutorialOverlay(tutorialManager: tutorialManager, tutorialID: "onboarding")
         .onAppear {
-            // Auto-start tutorial if user hasn't seen it
-            if tutorialManager.shouldShowTutorial(for: "onboarding") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    startTutorial()
-                }
-            } else {
-                // If tutorial was already seen, go to circles
-                navigateToCircles()
-            }
+            // Don't auto-start tutorial here - let user choose
+            // The tutorial will start in GroupListView after navigation
+            print("🎯 OnboardingTutorialView: onAppear - showing welcome screen")
         }
         .onChange(of: tutorialManager.isShowingTutorial) { isShowing in
             if !isShowing && tutorialManager.steps.isEmpty {
@@ -116,22 +109,30 @@ struct OnboardingTutorialView: View {
     }
     
     private func startTutorial() {
-        let steps = TutorialManager.createOnboardingTutorial()
-        tutorialManager.startTutorial(steps: steps)
+        // Don't start tutorial here - navigate to main app where card tutorial will show
+        print("🎯 OnboardingTutorialView: Get Started pressed - navigating to main app")
+        navigateToCircles()
     }
     
     private func navigateToCircles() {
-        // Mark tutorial as completed if not already done
-        tutorialManager.markTutorialCompleted(for: "onboarding")
+        // DON'T mark tutorial as completed yet - let the card tutorial show first
+        print("🎯 OnboardingTutorialView: Navigating to main app - tutorial will show as cards")
         
-        // Set onboarding flags in Firebase
+        // Update Firebase to mark onboarding screen as completed but keep tutorial flag for card tutorial
         if let userId = authManager.currentUser?.uid {
             let db = Firestore.firestore()
             db.collection("users").document(userId).updateData([
-                "isFirstTimeUser": false,
-                "onboardingCompleted": true,
+                "isFirstTimeUser": true, // Keep as true so card tutorial shows
+                "onboardingCompleted": false, // Keep as false so card tutorial shows
+                "welcomeScreenCompleted": true, // New flag to show we passed the welcome screen
                 "lastUpdated": FieldValue.serverTimestamp()
-            ])
+            ]) { error in
+                if let error = error {
+                    print("🎯 OnboardingTutorial: Firebase update error: \(error)")
+                } else {
+                    print("🎯 OnboardingTutorial: Successfully updated welcome screen flags")
+                }
+            }
         }
         
         // Complete the authentication flow by setting the proper state
@@ -140,6 +141,9 @@ struct OnboardingTutorialView: View {
                 authManager.isCompletingProfile = false
                 authManager.isAuthenticated = true
             }
+            
+            // Notify the main app that onboarding is complete
+            NotificationCenter.default.post(name: NSNotification.Name("OnboardingCompleted"), object: nil)
         }
     }
 }

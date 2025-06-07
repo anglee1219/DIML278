@@ -92,8 +92,15 @@ struct BirthdayEntryView: View {
                         Button(action: {
                             if canProceed {
                                 let sign = ZodiacCalculator.getZodiacSign(from: birthDate)
+                                print("🎯 BirthdayEntry: Calculated zodiac sign: '\(sign)' for date: \(birthDate)")
                                 UserDefaults.standard.set(sign, forKey: "profile_zodiac")
                                 UserDefaults.standard.set(birthDate, forKey: "profile_birthday")
+                                UserDefaults.standard.synchronize()
+                                
+                                // Verify it was saved
+                                let savedSign = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+                                print("🎯 BirthdayEntry: Verified saved zodiac sign: '\(savedSign)'")
+                                
                                 navigateToNext = true
                             }
                         }) {

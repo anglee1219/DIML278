@@ -55,12 +55,28 @@ struct BioEntryView: View {
         UserDefaults.standard.synchronize()
         
         // Update ProfileViewModel immediately with all data
+        print("🔧 BioEntry: Setting viewModel data directly:")
+        print("    name: '\(name)' -> viewModel")
+        print("    username: '\(username)' -> viewModel")
+        print("    pronouns: '\(pronouns)' -> viewModel")
+        print("    zodiacSign: '\(zodiacSign)' -> viewModel")
+        
+        // Temporarily disable saving during direct assignment
+        viewModel.isInitializing = true
+        
         viewModel.name = name
         viewModel.username = username
         viewModel.pronouns = pronouns
         viewModel.zodiac = zodiacSign
         viewModel.birthday = birthday
         // Note: location, school, interests are already set in viewModel from the UI
+        
+        // Re-enable saving
+        viewModel.isInitializing = false
+        
+        // Force immediate save to all storage systems
+        print("🔧 BioEntry: Forcing immediate profile save")
+        viewModel.saveProfile()
         
         // Create profile data for Firestore
         let profileData: [String: Any] = [
@@ -111,6 +127,10 @@ struct BioEntryView: View {
                         // First set loading to false
                         self.isLoading = false
                         
+                        // Force ProfileViewModel to sync with all the data we just saved
+                        print("🎯 BioEntry: Forcing ProfileViewModel to sync latest data")
+                        self.viewModel.forceRefresh()
+                        
                         // Reset tutorial for new users to ensure it shows
                         self.tutorialManager.resetTutorial(for: "onboarding")
                         print("🎯 BioEntry: Reset tutorial for new user")
@@ -126,9 +146,13 @@ struct BioEntryView: View {
                         
                         print("🎯 BioEntry: After - isCompletingProfile: \(self.authManager.isCompletingProfile), isAuthenticated: \(self.authManager.isAuthenticated)")
                         
-                        // Double-check authentication state after a brief delay
+                        // Double-check authentication state and force another profile refresh after a brief delay
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             print("🎯 BioEntry: Final check - isCompletingProfile: \(self.authManager.isCompletingProfile), isAuthenticated: \(self.authManager.isAuthenticated)")
+                            
+                            // Force one more profile refresh to ensure all data is loaded for the main app
+                            print("🎯 BioEntry: Final profile data sync for main app")
+                            self.viewModel.forceRefresh()
                         }
                         
                     case .failure(let error):
@@ -261,6 +285,46 @@ struct BioEntryView: View {
             )
         }
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            print("🎯 BioEntryView: onAppear - Loading profile data from UserDefaults")
+            
+            // Load all previously saved data from UserDefaults into ProfileViewModel
+            let savedName = UserDefaults.standard.string(forKey: "profile_name") ?? ""
+            let savedUsername = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+            let savedPronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
+            let savedZodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+            let savedBirthday = UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date()
+            let savedLocation = UserDefaults.standard.string(forKey: "profile_location") ?? ""
+            let savedSchool = UserDefaults.standard.string(forKey: "profile_school") ?? ""
+            let savedInterests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
+            
+            print("🎯 BioEntryView: Found in UserDefaults:")
+            print("    name: '\(savedName)'")
+            print("    username: '\(savedUsername)'")
+            print("    pronouns: '\(savedPronouns)'")
+            print("    zodiac: '\(savedZodiac)'")
+            print("    location: '\(savedLocation)'")
+            print("    school: '\(savedSchool)'")
+            print("    interests: '\(savedInterests)'")
+            
+            // Disable saving while setting initial values
+            viewModel.isInitializing = true
+            
+            // Load all data into ProfileViewModel
+            if !savedName.isEmpty { viewModel.name = savedName }
+            if !savedUsername.isEmpty { viewModel.username = savedUsername }
+            if !savedPronouns.isEmpty { viewModel.pronouns = savedPronouns }
+            if !savedZodiac.isEmpty { viewModel.zodiac = savedZodiac }
+            if savedBirthday != Date() { viewModel.birthday = savedBirthday }
+            if !savedLocation.isEmpty { viewModel.location = savedLocation }
+            if !savedSchool.isEmpty { viewModel.school = savedSchool }
+            if !savedInterests.isEmpty { viewModel.interests = savedInterests }
+            
+            // Re-enable saving
+            viewModel.isInitializing = false
+            
+            print("🎯 BioEntryView: Loaded data into ProfileViewModel - zodiac is now: '\(viewModel.zodiac)'")
+        }
     }
 }
 

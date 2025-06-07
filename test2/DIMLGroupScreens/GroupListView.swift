@@ -655,7 +655,7 @@ struct GroupListView: View {
                     print("🎯 GroupListView: Tutorial should show - starting tutorial for new user")
                     
                     // Start tutorial after a brief delay to ensure view is fully loaded
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         let steps = TutorialManager.createOnboardingTutorial()
                         print("🎯 GroupListView: Created \(steps.count) tutorial steps")
                         tutorialManager.startTutorial(steps: steps)

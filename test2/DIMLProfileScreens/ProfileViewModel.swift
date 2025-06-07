@@ -6,7 +6,7 @@ import FirebaseStorage
 class ProfileViewModel: ObservableObject {
     static let shared = ProfileViewModel()
     
-    private var isInitializing = true // Flag to prevent saving during initialization
+    var isInitializing = true // Flag to prevent saving during initialization
     
     @Published var name: String = "" {
         didSet {
@@ -121,28 +121,55 @@ class ProfileViewModel: ObservableObject {
         
         // Complete initialization after a shorter delay and ensure data is loaded
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            print("🔧 ProfileViewModel: Completing initialization after delay")
+            print("🔧 ProfileViewModel: Current data - name: '\(self.name)', username: '\(self.username)'")
+            
             self.isInitializing = false
             
             // Force refresh if profile data is empty but we have UserDefaults data
             if self.name.isEmpty || self.username.isEmpty {
+                print("🔧 ProfileViewModel: Data is empty, loading from UserDefaults and Firestore")
                 self.loadInitialData()
                 if Auth.auth().currentUser != nil {
                     self.loadUserProfile()
                 }
+            } else {
+                print("🔧 ProfileViewModel: Data already loaded, skipping refresh during init")
             }
         }
     }
     
     private func loadInitialData() {
+        print("🔧 ProfileViewModel: loadInitialData() called")
+        
         // Load initial data from UserDefaults
-        self.name = UserDefaults.standard.string(forKey: "profile_name") ?? ""
-        self.username = UserDefaults.standard.string(forKey: "profile_username") ?? ""
-        self.pronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
-        self.zodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
-        self.birthday = UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date()
-        self.location = UserDefaults.standard.string(forKey: "profile_location") ?? ""
-        self.school = UserDefaults.standard.string(forKey: "profile_school") ?? ""
-        self.interests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
+        let loadedName = UserDefaults.standard.string(forKey: "profile_name") ?? ""
+        let loadedUsername = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+        let loadedPronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
+        let loadedZodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+        let loadedBirthday = UserDefaults.standard.object(forKey: "profile_birthday") as? Date ?? Date()
+        let loadedLocation = UserDefaults.standard.string(forKey: "profile_location") ?? ""
+        let loadedSchool = UserDefaults.standard.string(forKey: "profile_school") ?? ""
+        let loadedInterests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
+        
+        print("🔧 ProfileViewModel: Loading from UserDefaults:")
+        print("    name: '\(loadedName)'")
+        print("    username: '\(loadedUsername)'")
+        print("    pronouns: '\(loadedPronouns)'")
+        print("    zodiac: '\(loadedZodiac)'")
+        print("    location: '\(loadedLocation)'")
+        print("    school: '\(loadedSchool)'")
+        print("    interests: '\(loadedInterests)'")
+        
+        self.name = loadedName
+        self.username = loadedUsername
+        self.pronouns = loadedPronouns
+        self.zodiac = loadedZodiac
+        self.birthday = loadedBirthday
+        self.location = loadedLocation
+        self.school = loadedSchool
+        self.interests = loadedInterests
+        
         // Always default to showing location and school
         self.showLocation = true
         self.showSchool = true
@@ -150,6 +177,12 @@ class ProfileViewModel: ObservableObject {
         if let imageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(Auth.auth().currentUser?.uid ?? "")") {
             self.profileImageData = imageData
         }
+        
+        print("🔧 ProfileViewModel: After loading, properties are:")
+        print("    self.name: '\(self.name)'")
+        print("    self.username: '\(self.username)'")
+        print("    self.pronouns: '\(self.pronouns)'")
+        print("    self.zodiac: '\(self.zodiac)'")
     }
     
     func loadUserProfile() {
@@ -171,9 +204,15 @@ class ProfileViewModel: ObservableObject {
             }
             
             guard let document = document, document.exists, let data = document.data() else {
-                print("No profile document found")
-                // Try to load from UserDefaults as fallback
-                self?.loadFromUserDefaults()
+                print("No profile document found - this might be a new account")
+                // For new accounts, don't overwrite data that was just set during account creation
+                // Only load from UserDefaults if we don't already have name/username
+                if let self = self, (self.name.isEmpty && self.username.isEmpty) {
+                    print("Loading from UserDefaults as fallback since profile is empty")
+                    self.loadFromUserDefaults()
+                } else {
+                    print("Keeping existing profile data since it appears to be set already")
+                }
                 // Mark initialization as complete even for fallback
                 DispatchQueue.main.async {
                     self?.isInitializing = false
@@ -536,12 +575,32 @@ class ProfileViewModel: ObservableObject {
     // Public method to force refresh profile data
     func forceRefresh() {
         print("🔄 ProfileViewModel: Force refresh requested")
+        print("🔄 ProfileViewModel: Current data before refresh:")
+        print("    name: '\(name)', username: '\(username)', pronouns: '\(pronouns)'")
+        print("    zodiac: '\(zodiac)', location: '\(location)', school: '\(school)', interests: '\(interests)'")
         
         // Allow saving during refresh
         isInitializing = false 
         
+        // First, immediately check UserDefaults to see what we have
+        let savedName = UserDefaults.standard.string(forKey: "profile_name") ?? ""
+        let savedUsername = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+        let savedPronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
+        let savedZodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+        let savedLocation = UserDefaults.standard.string(forKey: "profile_location") ?? ""
+        let savedSchool = UserDefaults.standard.string(forKey: "profile_school") ?? ""
+        let savedInterests = UserDefaults.standard.string(forKey: "profile_interests") ?? ""
+        
+        print("🔄 ProfileViewModel: UserDefaults data found:")
+        print("    name: '\(savedName)', username: '\(savedUsername)', pronouns: '\(savedPronouns)'")
+        print("    zodiac: '\(savedZodiac)', location: '\(savedLocation)', school: '\(savedSchool)', interests: '\(savedInterests)'")
+        
         // Reload from UserDefaults first to get any cached data
         loadInitialData()
+        
+        print("🔄 ProfileViewModel: Data after loading from UserDefaults:")
+        print("    name: '\(name)', username: '\(username)', pronouns: '\(pronouns)'")
+        print("    zodiac: '\(zodiac)', location: '\(location)', school: '\(school)', interests: '\(interests)'")
         
         // Then reload from Firestore to get the latest data
         if Auth.auth().currentUser != nil {
@@ -551,7 +610,10 @@ class ProfileViewModel: ObservableObject {
         // Also ensure we save UserDefaults data to Firestore if needed
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             if !self.name.isEmpty || !self.username.isEmpty {
+                print("🔄 ProfileViewModel: Saving profile data to ensure sync")
                 self.saveProfile()
+            } else {
+                print("⚠️ ProfileViewModel: No data to save - profile appears empty after refresh")
             }
         }
     }

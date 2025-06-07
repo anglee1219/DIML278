@@ -178,10 +178,18 @@ struct CreateAccountView: View {
                                             UserDefaults.standard.set(account.name, forKey: "profile_name")
                                             UserDefaults.standard.set(account.email, forKey: "pending_email")
                                             UserDefaults.standard.set(account.password, forKey: "pending_password")
+                                            UserDefaults.standard.synchronize()
                                             
-                                            // Update ProfileViewModel
-                                            ProfileViewModel.shared.username = account.username
-                                            ProfileViewModel.shared.name = account.name
+                                            print("🎯 CreateAccount: Saved to UserDefaults - name: '\(account.name)', username: '\(account.username)'")
+                                            
+                                            // Update ProfileViewModel with proper initialization handling
+                                            let profileVM = ProfileViewModel.shared
+                                            profileVM.isInitializing = true
+                                            profileVM.username = account.username
+                                            profileVM.name = account.name
+                                            profileVM.isInitializing = false
+                                            
+                                            print("🎯 CreateAccount: Set ProfileViewModel - name: '\(profileVM.name)', username: '\(profileVM.username)'")
                                     
                                             // Navigate to next screen
                                             DispatchQueue.main.async {

@@ -1,8 +1,8 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseAuth
-import UserNotifications
 import FirebaseFirestore
+import UserNotifications
 import FirebaseMessaging
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
@@ -473,6 +473,15 @@ struct test2App: App {
             .onChange(of: authManager.isAuthenticated) { newValue in
                 print("🔄 AuthState Changed - isAuthenticated: \(newValue)")
                 if newValue {
+                    // Check if this is a new user who should see onboarding
+                    checkIfNewUser()
+                    
+                    // Force ProfileViewModel to refresh data for new users
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        print("🔄 Main App: Forcing ProfileViewModel refresh for authenticated user")
+                        ProfileViewModel.shared.forceRefresh()
+                    }
+                    
                     // IMPORTANT: Request FCM token after authentication
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         delegate.requestAndSaveFCMToken()
@@ -491,6 +500,14 @@ struct test2App: App {
                 // Clear badge when app becomes active
                 UIApplication.shared.applicationIconBadgeNumber = 0
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OnboardingCompleted"))) { _ in
+                print("🎯 Main App: Received OnboardingCompleted notification")
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        self.showOnboarding = false
+                    }
+                }
+            }
             .onAppear {
                 // Request notification permissions when app first appears
                 requestNotificationPermissions()
@@ -504,6 +521,41 @@ struct test2App: App {
             print("📱 Notification permission granted: \(granted)")
             if let error = error {
                 print("📱 Notification permission error: \(error)")
+            }
+        }
+    }
+    
+    private func checkIfNewUser() {
+        print("🎯 Checking if user should see onboarding...")
+        
+        guard let userId = authManager.currentUser?.uid else {
+            print("🎯 No current user for onboarding check")
+            return
+        }
+        
+        // Check if user is flagged as first-time user in Firestore
+        let db = Firestore.firestore()
+        db.collection("users").document(userId).getDocument { document, error in
+            
+            if let error = error {
+                print("🎯 Error checking user onboarding status: \(error)")
+                return
+            }
+            
+            guard let document = document, document.exists, let data = document.data() else {
+                print("🎯 No user document found")
+                return
+            }
+            
+            let isFirstTimeUser = data["isFirstTimeUser"] as? Bool ?? false
+            let onboardingCompleted = data["onboardingCompleted"] as? Bool ?? false
+            
+            print("🎯 User flags - isFirstTimeUser: \(isFirstTimeUser), onboardingCompleted: \(onboardingCompleted)")
+            
+            DispatchQueue.main.async { [self] in
+                // Skip full-screen onboarding - let tutorial cards show on main interface instead
+                print("🎯 New user detected - will show tutorial cards on main interface, not full-screen onboarding")
+                showOnboarding = false
             }
         }
     }

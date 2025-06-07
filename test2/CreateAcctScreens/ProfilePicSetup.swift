@@ -192,6 +192,19 @@ struct ProfilePicSetup: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            print("🎯 ProfilePicSetup: onAppear - Current ProfileViewModel data:")
+            print("    name: '\(viewModel.name)'")
+            print("    username: '\(viewModel.username)'")
+            print("    isInitializing: \(viewModel.isInitializing)")
+            
+            // Check UserDefaults too
+            let savedName = UserDefaults.standard.string(forKey: "profile_name") ?? ""
+            let savedUsername = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+            print("🎯 ProfilePicSetup: UserDefaults data:")
+            print("    name: '\(savedName)'")
+            print("    username: '\(savedUsername)'")
+        }
     }
     
     private func checkCameraPermission() {

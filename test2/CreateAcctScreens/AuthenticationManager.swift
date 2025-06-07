@@ -149,6 +149,18 @@ class AuthenticationManager: ObservableObject {
                             self?.isAuthenticated = true
                             self?.currentUser = authResult?.user
                             
+                            // Force ProfileViewModel to refresh with the latest data, but don't overwrite existing data
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                print("🔥 AuthManager: Checking if ProfileViewModel needs refresh after completion")
+                                let profileVM = ProfileViewModel.shared
+                                if profileVM.name.isEmpty && profileVM.username.isEmpty {
+                                    print("🔥 AuthManager: ProfileViewModel is empty, forcing refresh")
+                                    profileVM.forceRefresh()
+                                } else {
+                                    print("🔥 AuthManager: ProfileViewModel has data, not forcing refresh to avoid overwriting")
+                                }
+                            }
+                            
                             // Clean up only the temporary credentials
                             UserDefaults.standard.removeObject(forKey: "pending_email")
                             UserDefaults.standard.removeObject(forKey: "pending_password")

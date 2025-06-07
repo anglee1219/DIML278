@@ -119,12 +119,18 @@ struct ProfileView: View {
                             .font(.system(size: 32, weight: .bold))
                             .foregroundColor(viewModel.name.isEmpty ? .gray : .black)
                             .padding(.top, 8)
+                            .onAppear {
+                                print("🎯 ProfileView: Displaying name: '\(viewModel.name)'")
+                            }
                         
                         // Username
                         Text(viewModel.username.isEmpty ? "@username" : "@\(viewModel.username)")
                             .font(.system(size: 16))
                             .foregroundColor(viewModel.username.isEmpty ? .gray : .black.opacity(0.6))
                             .padding(.bottom, 4)
+                            .onAppear {
+                                print("🎯 ProfileView: Displaying username: '\(viewModel.username)'")
+                            }
                         
                         // Pronouns and Sign
                         let pronounsText = viewModel.pronouns.isEmpty ? "pronouns" : viewModel.pronouns
@@ -132,6 +138,10 @@ struct ProfileView: View {
                         Text("\(pronounsText) || \(zodiacText)")
                             .font(.system(size: 16))
                             .foregroundColor(.black.opacity(0.6))
+                            .onAppear {
+                                print("🎯 ProfileView: Displaying pronouns: '\(pronounsText)', zodiac: '\(zodiacText)'")
+                                print("🎯 ProfileView: viewModel.zodiac: '\(viewModel.zodiac)'")
+                            }
                         
                         // Info Section
                         VStack(alignment: .leading, spacing: 8) {
@@ -376,6 +386,33 @@ struct ProfileView: View {
             print("   location: '\(viewModel.location)'")
             print("   school: '\(viewModel.school)'")
             print("   interests: '\(viewModel.interests)'")
+            
+            // Check if data is missing and try to force load
+            if viewModel.name.isEmpty && viewModel.username.isEmpty {
+                print("⚠️ ProfileView: No data loaded, checking UserDefaults...")
+                let savedName = UserDefaults.standard.string(forKey: "profile_name") ?? ""
+                let savedUsername = UserDefaults.standard.string(forKey: "profile_username") ?? ""
+                let savedPronouns = UserDefaults.standard.string(forKey: "profile_pronouns") ?? ""
+                let savedZodiac = UserDefaults.standard.string(forKey: "profile_zodiac") ?? ""
+                
+                print("📱 UserDefaults has:")
+                print("    name: '\(savedName)'")
+                print("    username: '\(savedUsername)'")
+                print("    pronouns: '\(savedPronouns)'")
+                print("    zodiac: '\(savedZodiac)'")
+                
+                if !savedName.isEmpty || !savedUsername.isEmpty {
+                    print("🔄 Found data in UserDefaults, setting directly and forcing refresh...")
+                    
+                    // Set data directly if it exists
+                    viewModel.isInitializing = true
+                    if !savedName.isEmpty { viewModel.name = savedName }
+                    if !savedUsername.isEmpty { viewModel.username = savedUsername }
+                    if !savedPronouns.isEmpty { viewModel.pronouns = savedPronouns }
+                    if !savedZodiac.isEmpty { viewModel.zodiac = savedZodiac }
+                    viewModel.isInitializing = false
+                }
+            }
             
             // Always force refresh to ensure latest data
             print("🔄 Forcing profile data refresh...")

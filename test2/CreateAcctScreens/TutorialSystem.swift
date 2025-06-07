@@ -331,6 +331,9 @@ struct TutorialSlide: View {
                 AuthenticationManager.shared.isCompletingProfile = false
                 AuthenticationManager.shared.isAuthenticated = true
             }
+            
+            // Notify the main app that onboarding is complete
+            NotificationCenter.default.post(name: NSNotification.Name("OnboardingCompleted"), object: nil)
         }
     }
 }
