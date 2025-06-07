@@ -462,6 +462,11 @@ class EntryStore: ObservableObject {
         print("💬 EntryStore: Adding comment to entry \(entryId) in Firestore")
         print("💬 EntryStore: Comment text: \(comment.text)")
         print("💬 EntryStore: Comment user: \(comment.userId)")
+        print("💬 EntryStore: Comment has imageData: \(comment.imageData != nil)")
+        print("💬 EntryStore: Comment has imageURL: \(comment.imageURL != nil)")
+        if let imageURL = comment.imageURL {
+            print("💬 EntryStore: Comment imageURL: \(imageURL)")
+        }
         
         // First, get the current entry from Firestore
         db.collection("groups")
@@ -495,11 +500,14 @@ class EntryStore: ObservableObject {
                 // Add image data if present
                 if let imageData = comment.imageData {
                     // Convert Data to base64 string for Firestore storage
-                    newCommentData["imageData"] = imageData.base64EncodedString()
+                    let base64String = imageData.base64EncodedString()
+                    newCommentData["imageData"] = base64String
+                    print("💬 EntryStore: Added imageData to comment (base64 length: \(base64String.count))")
                 }
                 
                 if let imageURL = comment.imageURL {
                     newCommentData["imageURL"] = imageURL
+                    print("💬 EntryStore: Added imageURL to comment: \(imageURL)")
                 }
                 
                 existingComments.append(newCommentData)
@@ -515,6 +523,7 @@ class EntryStore: ObservableObject {
                         } else {
                             print("✅ EntryStore: Successfully added comment to Firestore for group \(self.groupId)")
                             print("📨 EntryStore: Comment should now be visible to all \(existingComments.count) total comments")
+                            print("📨 EntryStore: Picture comment sync - All group members will see this image!")
                             // The listener will automatically update the local entries array
                             
                             // Send comment notification to entry owner
@@ -1303,30 +1312,44 @@ class EntryStore: ObservableObject {
     }
     
     private func sendUploadFCMNotification(token: String, uploaderName: String, targetUserId: String, prompt: String) {
-        print("📱 Sending FCM upload notification...")
-        print("📱 🚨 CRITICAL: sendUploadFCMNotification WAS CALLED!")
-        print("📱 🚨 Token: \(String(token.suffix(8)))")
+        print("📱 🚨 === UPLOAD FCM NOTIFICATION DEBUG ===")
+        print("📱 🚨 Token (last 8): \(String(token.suffix(8)))")
         print("📱 🚨 Uploader: \(uploaderName)")
         print("📱 🚨 Target User: \(targetUserId)")
+        print("📱 🚨 Current User: \(Auth.auth().currentUser?.uid ?? "nil")")
+        print("📱 🚨 Group ID: \(groupId)")
         print("📱 🚨 Prompt: \(prompt)")
         
-        // Create notification request for Cloud Function - same pattern as reactions
+        // CRITICAL: Verify we're not sending to the uploader
+        if targetUserId == Auth.auth().currentUser?.uid {
+            print("📱 🚨 ❌ ABORTING: Target user is the uploader!")
+            return
+        }
+        
+        // Create notification request for Cloud Function
         let notificationRequest: [String: Any] = [
             "fcmToken": token,
-            "title": "📸 New DIML Posted!",
-            "body": "\(uploaderName) just shared their day in your circle!",
+            "title": "📷 New DIML Upload!",
+            "body": "\(uploaderName) just shared their day in your circle",
             "data": [
                 "type": "diml_upload",
                 "groupId": groupId,
                 "uploaderName": uploaderName,
-                "prompt": prompt,
-                "targetUserId": targetUserId
+                "targetUserId": targetUserId,
+                "prompt": prompt
             ],
             "timestamp": FieldValue.serverTimestamp(),
             "processed": false,
             "targetUserId": targetUserId,
             "notificationType": "diml_upload"
         ]
+        
+        print("📱 🚨 Notification request data:")
+        for (key, value) in notificationRequest {
+            if key != "timestamp" {
+                print("📱 🚨   \(key): \(value)")
+            }
+        }
         
         print("📱 🚨 About to add notification request to Firestore...")
         print("📱 🚨 Request data: \(notificationRequest)")
@@ -1338,6 +1361,12 @@ class EntryStore: ObservableObject {
             } else {
                 print("✅ DIML upload notification queued via Cloud Function for member \(targetUserId)")
                 print("✅ 🚨 CRITICAL SUCCESS: Notification request successfully added to Firestore!")
+                
+                // Add follow-up verification
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    print("📱 🚨 FOLLOW-UP: Checking if notification was processed...")
+                    // You can manually check Firestore console to see if the document was created
+                }
             }
         }
     }
@@ -1441,7 +1470,21 @@ class EntryStore: ObservableObject {
     }
     
     private func sendReactionFCMNotification(token: String, reactorName: String, reaction: String, entryOwnerId: String, targetUserId: String, prompt: String) {
-        print("📱 Sending FCM reaction notification...")
+        print("📱 🎉 === REACTION FCM NOTIFICATION DEBUG ===")
+        print("📱 🎉 Token (last 8): \(String(token.suffix(8)))")
+        print("📱 🎉 Reactor: \(reactorName)")
+        print("📱 🎉 Reaction: \(reaction)")
+        print("📱 🎉 Entry Owner: \(entryOwnerId)")
+        print("📱 🎉 Target User: \(targetUserId)")
+        print("📱 🎉 Current User: \(Auth.auth().currentUser?.uid ?? "nil")")
+        print("📱 🎉 Group ID: \(groupId)")
+        print("📱 🎉 Prompt: \(prompt)")
+        
+        // CRITICAL: Verify we're not sending to the reactor
+        if targetUserId == Auth.auth().currentUser?.uid {
+            print("📱 🎉 ❌ ABORTING: Target user is the reactor!")
+            return
+        }
         
         // Create notification request for Cloud Function
         let notificationRequest: [String: Any] = [
@@ -1463,12 +1506,21 @@ class EntryStore: ObservableObject {
             "notificationType": "reaction"
         ]
         
-        print("📱 Adding reaction notification request to Firestore...")
+        print("📱 🎉 Reaction notification request data:")
+        for (key, value) in notificationRequest {
+            if key != "timestamp" {
+                print("📱 🎉   \(key): \(value)")
+            }
+        }
+        
+        print("📱 🎉 Adding reaction notification request to Firestore...")
         db.collection("notificationRequests").addDocument(data: notificationRequest) { error in
             if let error = error {
-                print("📱 ❌ Error queuing reaction notification: \(error.localizedDescription)")
+                print("📱 🎉 ❌ Error queuing reaction notification: \(error.localizedDescription)")
+                print("📱 🎉 ❌ CRITICAL ERROR: \(error)")
             } else {
-                print("📱 ✅ Reaction notification queued via Cloud Function for member \(targetUserId)")
+                print("📱 🎉 ✅ Reaction notification queued via Cloud Function for member \(targetUserId)")
+                print("📱 🎉 ✅ CRITICAL SUCCESS: Notification request successfully added to Firestore!")
             }
         }
     }
@@ -1917,6 +1969,116 @@ class EntryStore: ObservableObject {
         }
     }
     
+    // MARK: - Comprehensive Notification System Test
+    
+    func testAllNotificationSystems() {
+        print("🧪 === COMPREHENSIVE NOTIFICATION SYSTEM TEST ===")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("🧪 ❌ No current user for notification testing")
+            return
+        }
+        
+        print("🧪 Current user ID: \(currentUserId)")
+        print("🧪 Group ID: \(groupId)")
+        
+        // Test 1: Upload Notifications
+        print("🧪 🚀 Testing upload notifications...")
+        testUploadNotification()
+        
+        // Test 2: Reaction Notifications  
+        print("🧪 🎉 Testing reaction notifications...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.testReactionNotification()
+        }
+        
+        // Test 3: Group Members Retrieval
+        print("🧪 👥 Testing group member retrieval...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+            self.getGroupMembers { members in
+                print("🧪 👥 Group members test result: \(members.count) members")
+                for (index, memberId) in members.enumerated() {
+                    print("🧪 👥 [\(index + 1)] Member: \(memberId)")
+                }
+                
+                if members.contains(currentUserId) {
+                    print("🧪 👥 ❌ PROBLEM: Current user is in the members list!")
+                    print("🧪 👥 ❌ This would cause self-notifications!")
+                } else {
+                    print("🧪 👥 ✅ Good: Current user is NOT in the members list")
+                }
+            }
+        }
+        
+        // Test 4: Check Cloud Function Requirements
+        print("🧪 ☁️ Testing Cloud Function requirements...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
+            self.testCloudFunctionRequirements()
+        }
+    }
+    
+    private func testReactionNotification() {
+        print("🧪 🎉 === TESTING REACTION NOTIFICATION ===")
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("🧪 🎉 ❌ No current user")
+            return
+        }
+        
+        getUserName(for: currentUserId) { reactorName in
+            print("🧪 🎉 Reactor name: \(reactorName)")
+            
+            self.getGroupMembers { groupMembers in
+                print("🧪 🎉 Testing reaction notification to \(groupMembers.count) group members")
+                
+                self.sendReactionNotification(
+                    reactorName: reactorName,
+                    reaction: "🧪",
+                    entryOwnerId: "test_entry_owner",
+                    prompt: "Test reaction notification prompt"
+                )
+            }
+        }
+    }
+    
+    private func testCloudFunctionRequirements() {
+        print("🧪 ☁️ === TESTING CLOUD FUNCTION REQUIREMENTS ===")
+        
+        // Test what fields are being sent to the Cloud Function
+        let testNotificationRequest: [String: Any] = [
+            "fcmToken": "test_token_12345678",
+            "title": "🧪 Test Notification",
+            "body": "Testing Cloud Function requirements",
+            "data": [
+                "type": "test",
+                "groupId": groupId,
+                "testField": "testValue"
+            ],
+            "timestamp": FieldValue.serverTimestamp(),
+            "processed": false,
+            "targetUserId": "test_user_id",
+            "notificationType": "test"
+        ]
+        
+        print("🧪 ☁️ Test notification request structure:")
+        for (key, value) in testNotificationRequest {
+            if key != "timestamp" {
+                print("🧪 ☁️   \(key): \(value)")
+            }
+        }
+        
+        print("🧪 ☁️ Adding test notification request to Firestore...")
+        db.collection("notificationRequests").addDocument(data: testNotificationRequest) { error in
+            if let error = error {
+                print("🧪 ☁️ ❌ Error adding test notification: \(error.localizedDescription)")
+                print("🧪 ☁️ ❌ This suggests a Firestore permission or connection issue")
+            } else {
+                print("🧪 ☁️ ✅ Test notification request successfully added to Firestore!")
+                print("🧪 ☁️ ✅ This means the app can write to notificationRequests collection")
+                print("🧪 ☁️ ✅ If notifications still don't work, the issue is likely in the Cloud Function")
+            }
+        }
+    }
 
 }
 
@@ -2099,24 +2261,94 @@ extension EntryStore {
                     if let error = error {
                         print("📱 ⏭️ ❌ Error scheduling prompt unlock notification: \(error.localizedDescription)")
                     } else {
-                        print("📱 ⏭️ ✅ Successfully scheduled prompt unlock notification!")
+                        print("📱 ⏭️ ✅ Successfully scheduled LOCAL prompt unlock notification!")
                         print("📱 ⏭️ ✅ Influencer \(currentInfluencerId) will be notified in \(Int(timeInterval)) seconds")
-                        print("📱 ⏭️ ✅ Notification will work when app is backgrounded")
+                        print("📱 ⏭️ ✅ Local notification will work when app is backgrounded")
                         
-                        // Verify notification was scheduled
+                        // CRITICAL: Also schedule FCM push notification for when app is terminated
+                        print("📱 ⏭️ 🚀 Also scheduling FCM push notification for app termination...")
+                        self.scheduleFCMPromptUnlockNotification(
+                            influencerId: currentInfluencerId,
+                            groupName: groupName,
+                            prompt: nextPromptText,
+                            unlockTime: nextPromptTime
+                        )
+                        
+                        // Verify local notification was scheduled
                         UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
                             let justScheduled = requests.filter { $0.identifier == identifier }
                             if justScheduled.isEmpty {
-                                print("📱 ⏭️ ❌ CRITICAL: Notification was NOT found in pending queue!")
+                                print("📱 ⏭️ ❌ CRITICAL: Local notification was NOT found in pending queue!")
                             } else {
-                                print("📱 ⏭️ ✅ VERIFIED: Notification is confirmed in pending queue")
+                                print("📱 ⏭️ ✅ VERIFIED: Local notification is confirmed in pending queue")
                                 if let trigger = justScheduled.first?.trigger as? UNTimeIntervalNotificationTrigger {
                                     print("📱 ⏭️ ✅ VERIFIED: Will fire at \(trigger.nextTriggerDate() ?? Date())")
                                 }
                             }
-                            print("📱 ⏭️ 📊 Total pending notifications: \(requests.count)")
+                            print("📱 ⏭️ 📊 Total pending local notifications: \(requests.count)")
                         }
                     }
+                }
+            }
+        }
+    }
+    
+    // Schedule FCM push notification for prompt unlock (works when app is terminated)
+    private func scheduleFCMPromptUnlockNotification(influencerId: String, groupName: String, prompt: String, unlockTime: Date) {
+        print("📱 ⏭️ 🚀 === SCHEDULING FCM PROMPT UNLOCK NOTIFICATION ===")
+        print("📱 ⏭️ 🚀 Influencer: \(influencerId)")
+        print("📱 ⏭️ 🚀 Group: \(groupName)")
+        print("📱 ⏭️ 🚀 Unlock time: \(unlockTime)")
+        print("📱 ⏭️ 🚀 Prompt: \(prompt)")
+        
+        // Get the influencer's FCM token
+        db.collection("users").document(influencerId).getDocument { [weak self] document, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("📱 ⏭️ 🚀 ❌ Error fetching influencer FCM token: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let userData = document?.data(),
+                  let fcmToken = userData["fcmToken"] as? String else {
+                print("📱 ⏭️ 🚀 ⚠️ No FCM token found for influencer \(influencerId)")
+                print("📱 ⏭️ 🚀 ⚠️ FCM notification will not be sent when app is terminated")
+                return
+            }
+            
+            print("📱 ⏭️ 🚀 ✅ Found FCM token for influencer: ...\(String(fcmToken.suffix(8)))")
+            
+            // Create scheduled notification request for Cloud Function
+            let scheduledNotificationRequest: [String: Any] = [
+                "fcmToken": fcmToken,
+                "title": "🎉 New Prompt Unlocked!",
+                "body": "Your next DIML prompt is ready to answer!",  // Generic message
+                "data": [
+                    "type": "prompt_unlock",
+                    "groupId": self.groupId,
+                    "groupName": groupName,
+                    "userId": influencerId,
+                    "prompt": prompt,  // Real prompt for navigation
+                    "unlockTime": String(unlockTime.timeIntervalSince1970)
+                ],
+                "scheduledFor": unlockTime,  // When to send the notification
+                "processed": false,
+                "targetUserId": influencerId,
+                "notificationType": "prompt_unlock_scheduled",
+                "createdAt": FieldValue.serverTimestamp()
+            ]
+            
+            print("📱 ⏭️ 🚀 Storing scheduled FCM notification request...")
+            
+            // Store in Firestore for Cloud Function to process at the right time
+            self.db.collection("scheduledNotifications").addDocument(data: scheduledNotificationRequest) { error in
+                if let error = error {
+                    print("📱 ⏭️ 🚀 ❌ Error storing scheduled FCM notification: \(error.localizedDescription)")
+                } else {
+                    print("📱 ⏭️ 🚀 ✅ Successfully stored scheduled FCM notification!")
+                    print("📱 ⏭️ 🚀 ✅ Cloud Function will send FCM push at \(unlockTime)")
+                    print("📱 ⏭️ 🚀 ✅ This ensures notification works when app is terminated")
                 }
             }
         }

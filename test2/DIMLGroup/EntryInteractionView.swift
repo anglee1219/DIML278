@@ -19,7 +19,8 @@ struct EntryInteractionView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
+            VStack(spacing: 0) {
+                // Fixed header with post info
                 VStack(alignment: .leading, spacing: 8) {
                     Text(entry?.prompt ?? "")
                         .font(.caption)
@@ -31,7 +32,7 @@ struct EntryInteractionView: View {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFit()
-                            .frame(maxHeight: min(geometry.size.height * 0.3, 200))
+                            .frame(maxHeight: min(geometry.size.height * 0.25, 150))
                             .cornerRadius(12)
                     } else if let imageURL = entry?.imageURL {
                         AsyncImage(url: URL(string: imageURL)) { phase in
@@ -40,7 +41,7 @@ struct EntryInteractionView: View {
                                 image
                                     .resizable()
                                     .scaledToFit()
-                                    .frame(maxHeight: min(geometry.size.height * 0.3, 200))
+                                    .frame(maxHeight: min(geometry.size.height * 0.25, 150))
                                     .cornerRadius(12)
                             case .failure:
                                 VStack {
@@ -50,98 +51,132 @@ struct EntryInteractionView: View {
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                 }
-                                .frame(height: min(geometry.size.height * 0.2, 100))
+                                .frame(height: 80)
                             case .empty:
                                 ProgressView()
-                                    .frame(height: min(geometry.size.height * 0.2, 100))
+                                    .frame(height: 80)
                             @unknown default:
                                 EmptyView()
                             }
                         }
                     }
-
-                    // Comments Section
+                    
+                    // Comments header
                     Text("Comments (\(entry?.comments.count ?? 0))")
                         .font(.headline)
-                    
-                    ForEach(entry?.comments ?? []) { comment in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                HStack(spacing: 6) {
-                                    ProfilePictureView(userId: comment.userId, size: 20, groupMembers: groupMembers)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(getUserName(for: comment.userId))
-                                            .font(.caption)
-                                            .fontWeight(.medium)
-                                            .foregroundColor(.primary)
-                                        Text("@\(getUserUsername(for: comment.userId))")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                Spacer()
-                                Text(comment.timestamp, style: .time)
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(comment.text)
-                                    .font(.subheadline)
-                                    .padding(.leading, 26)
-                                
-                                // Display image if comment has one
-                                if let imageData = comment.imageData, let image = UIImage(data: imageData) {
-                                    Image(uiImage: image)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(maxHeight: min(geometry.size.height * 0.25, 150))
-                                        .cornerRadius(12)
-                                        .padding(.leading, 26)
-                                } else if let imageURL = comment.imageURL {
-                                    AsyncImage(url: URL(string: imageURL)) { phase in
-                                        switch phase {
-                                        case .success(let image):
-                                            image
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(maxHeight: min(geometry.size.height * 0.25, 150))
-                                                .cornerRadius(12)
-                                        case .failure:
-                                            VStack {
-                                                Image(systemName: "photo")
-                                                    .foregroundColor(.gray)
-                                                Text("Failed to load image")
-                                                    .font(.caption)
-                                                    .foregroundColor(.gray)
-                                            }
-                                            .frame(height: 80)
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(height: 80)
-                                        @unknown default:
-                                            EmptyView()
+                        .padding(.top, 8)
+                }
+                .padding(.horizontal, geometry.size.width < 375 ? 12 : 16)
+                .padding(.top, 12)
+                
+                // Scrollable comments section
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(entry?.comments ?? []) { comment in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    HStack(spacing: 6) {
+                                        ProfilePictureView(userId: comment.userId, size: 20, groupMembers: groupMembers)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(getUserName(for: comment.userId))
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                                .foregroundColor(.primary)
+                                            Text("@\(getUserUsername(for: comment.userId))")
+                                                .font(.caption2)
+                                                .foregroundColor(.gray)
                                         }
                                     }
-                                    .padding(.leading, 26)
+                                    Spacer()
+                                    Text(comment.timestamp, style: .time)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 6) {
+                                    // Only show text if it's not a photo comment or if it has custom text
+                                    if !comment.text.contains("📸 Shared a photo") || comment.text != "📸 Shared a photo" {
+                                        Text(comment.text)
+                                            .font(.subheadline)
+                                            .padding(.leading, 26)
+                                    }
+                                    
+                                    // Display image if comment has one
+                                    if let imageData = comment.imageData, let image = UIImage(data: imageData) {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(maxHeight: min(geometry.size.height * 0.3, 200))
+                                            .cornerRadius(12)
+                                            .padding(.leading, 26)
+                                            .onAppear {
+                                                print("📸 Displaying picture comment from imageData for user \(comment.userId)")
+                                            }
+                                    } else if let imageURL = comment.imageURL {
+                                        AsyncImage(url: URL(string: imageURL)) { phase in
+                                            switch phase {
+                                            case .success(let image):
+                                                image
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .frame(maxHeight: min(geometry.size.height * 0.3, 200))
+                                                    .cornerRadius(12)
+                                                    .onAppear {
+                                                        print("📸 Successfully loaded picture comment from Firebase Storage: \(imageURL)")
+                                                    }
+                                            case .failure(let error):
+                                                VStack {
+                                                    Image(systemName: "photo")
+                                                        .foregroundColor(.gray)
+                                                    Text("Failed to load image")
+                                                        .font(.caption)
+                                                        .foregroundColor(.gray)
+                                                }
+                                                .frame(height: 80)
+                                                .onAppear {
+                                                    print("📸 Failed to load picture comment from Firebase Storage: \(error)")
+                                                }
+                                            case .empty:
+                                                ProgressView()
+                                                    .frame(height: 80)
+                                                    .onAppear {
+                                                        print("📸 Loading picture comment from Firebase Storage: \(imageURL)")
+                                                    }
+                                            @unknown default:
+                                                EmptyView()
+                                            }
+                                        }
+                                        .padding(.leading, 26)
+                                    }
                                 }
                             }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(Color.gray.opacity(0.05))
+                            .cornerRadius(12)
                         }
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 10)
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(12)
                     }
-
-                    // Comment Input
+                    .padding(.horizontal, geometry.size.width < 375 ? 12 : 16)
+                    .padding(.bottom, 20) // Extra padding at bottom for better scrolling
+                }
+                .frame(maxHeight: .infinity) // Allow scrollview to expand
+                
+                // Fixed comment input at bottom
+                VStack(spacing: 0) {
+                    Divider()
+                        .background(Color.gray.opacity(0.3))
+                    
                     HStack(spacing: 8) {
                         ProfilePictureView(userId: Auth.auth().currentUser?.uid ?? "", size: 28, groupMembers: groupMembers)
                         TextField("Add a comment...", text: $commentText)
                             .textFieldStyle(PlainTextFieldStyle())
                             .foregroundColor(.black)
-                            .padding(.horizontal, 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(18)
                             .frame(minHeight: 36)
-                        Button("Post") {
+                        Button(action: {
                             guard !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                             
                             let userId = Auth.auth().currentUser?.uid ?? "anonymous"
@@ -155,23 +190,24 @@ struct EntryInteractionView: View {
                             print("💬 Adding comment to entry \(entryId): \(commentText)")
                             entryStore.addComment(to: entryId, comment: newComment)
                             commentText = ""
+                        }) {
+                            Text("Post")
+                                .font(.custom("Fredoka-Medium", size: 14))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty 
+                                    ? Color.gray.opacity(0.6) 
+                                    : Color.blue
+                                )
+                                .cornerRadius(18)
                         }
                         .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    .padding(.top, 8)
-                }
-                .padding(.horizontal, geometry.size.width < 375 ? 12 : 16)
-                .padding(.vertical, 12)
-                
-                // New reaction button positioned in bottom right corner
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        ReactionButton(entryId: entryId, entryStore: entryStore, groupMembers: groupMembers)
-                            .padding(.trailing, geometry.size.width < 375 ? 12 : 20)
-                            .padding(.bottom, geometry.size.width < 375 ? 12 : 20)
-                    }
+                    .padding(.horizontal, geometry.size.width < 375 ? 12 : 16)
+                    .padding(.vertical, 12)
+                    .background(Color.white)
                 }
             }
         }

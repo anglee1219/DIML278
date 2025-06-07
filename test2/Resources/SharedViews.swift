@@ -337,16 +337,13 @@ struct ReactionButton: View {
                                 .background(Color.white) // Ensure header has white background
                                 
                                 // Scrollable Content
-                                ScrollView {
-                                    EntryInteractionView(entryId: entryId, entryStore: entryStore, groupMembers: groupMembers)
-                                        .padding(.bottom, 20) // Add bottom padding for better UX
-                                }
-                                .frame(maxHeight: .infinity) // Allow scroll view to expand
+                                EntryInteractionView(entryId: entryId, entryStore: entryStore, groupMembers: groupMembers)
                             }
                             .background(Color.white)
                             .cornerRadius(16)
-                            .padding(.horizontal, geometry.size.width < 375 ? 12 : 20) // Adaptive horizontal padding
-                            .padding(.vertical, geometry.size.height < 700 ? 40 : 50) // Adaptive vertical padding for smaller screens
+                            .padding(.horizontal, 20) // Consistent horizontal padding
+                            .padding(.top, 60) // Top padding for status bar
+                            .padding(.bottom, 20) // Minimal bottom padding
                             .transition(.scale.combined(with: .opacity))
                         )
                 }
@@ -402,37 +399,77 @@ struct ReactionButton: View {
     }
     
     private func handlePictureReaction(_ image: UIImage) {
-        // Convert image to comment instead of just adding camera emoji reaction
+        // Convert image to comment with Firebase Storage upload
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             print("❌ No current user for picture comment")
             return
         }
         
-        // Convert UIImage to Data for storage
-        let imageData = image.jpegData(compressionQuality: 0.8)
+        print("📸 Starting picture reaction upload...")
         
-        // Create a new comment with the image
-        let pictureComment = Comment(
-            id: UUID().uuidString,
-            userId: currentUserId,
-            text: "📸 Shared a photo",
-            timestamp: Date(),
-            imageData: imageData,
-            imageURL: nil
-        )
-        
-        // Add the comment to the entry
-        entryStore.addComment(to: entryId, comment: pictureComment)
-        
-        // Add success haptic feedback
-        let successFeedback = UINotificationFeedbackGenerator()
-        successFeedback.notificationOccurred(.success)
-        
-        print("📸 Picture comment added for entry: \(entryId)")
-        
-        // Show the comments section so user can see their photo comment
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            showComments = true
+        // Upload image to Firebase Storage first
+        Task {
+            do {
+                let imagePath = "comment_images/\(UUID().uuidString).jpg"
+                let imageURL = try await StorageManager.shared.uploadImage(image, path: imagePath)
+                
+                print("📸 Picture reaction uploaded successfully: \(imageURL)")
+                print("📸 Creating comment with imageURL for all users to see...")
+                
+                // Create a new comment with the Firebase Storage URL
+                let pictureComment = Comment(
+                    id: UUID().uuidString,
+                    userId: currentUserId,
+                    text: "📸 Shared a photo", // This text will be hidden in UI for pure photo reactions
+                    timestamp: Date(),
+                    imageData: nil, // Use Firebase Storage URL instead of base64
+                    imageURL: imageURL
+                )
+                
+                await MainActor.run {
+                    // Add the comment to the entry
+                    print("📸 Adding picture comment to entry \(entryId) - this will sync to all group members")
+                    entryStore.addComment(to: entryId, comment: pictureComment)
+                    
+                    // Add success haptic feedback
+                    let successFeedback = UINotificationFeedbackGenerator()
+                    successFeedback.notificationOccurred(.success)
+                    
+                    print("📸 Picture comment added for entry: \(entryId)")
+                    
+                    // Show the comments section so user can see their photo comment
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        showComments = true
+                    }
+                }
+                
+            } catch {
+                print("📸 Error uploading picture reaction: \(error)")
+                
+                // Fallback to local storage if upload fails
+                await MainActor.run {
+                    let imageData = image.jpegData(compressionQuality: 0.8)
+                    
+                    let pictureComment = Comment(
+                        id: UUID().uuidString,
+                        userId: currentUserId,
+                        text: "📸 Shared a photo", // This text will be hidden in UI for pure photo reactions
+                        timestamp: Date(),
+                        imageData: imageData, // Fallback to base64 storage
+                        imageURL: nil
+                    )
+                    
+                    entryStore.addComment(to: entryId, comment: pictureComment)
+                    
+                    // Add haptic feedback even for fallback
+                    let successFeedback = UINotificationFeedbackGenerator()
+                    successFeedback.notificationOccurred(.success)
+                    
+                    print("📸 Picture comment added with local storage fallback - this will sync to all group members")
+                    
+                    showComments = true
+                }
+            }
         }
     }
     

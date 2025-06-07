@@ -568,6 +568,11 @@ struct GroupListView: View {
                             isRefreshing = false
                         }
                     }
+                    .safeAreaInset(edge: .bottom) {
+                        // Add bottom safe area inset to ensure last group is visible
+                        Spacer()
+                            .frame(height: 100) // Generous bottom padding for tab bar and safe area
+                    }
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: isSearchFocused)

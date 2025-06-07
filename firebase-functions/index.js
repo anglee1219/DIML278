@@ -122,7 +122,7 @@ exports.sendScheduledNotifications = onSchedule('every 1 minutes', async (event)
         const scheduledNotifications = await admin.firestore()
             .collection('scheduledNotifications')
             .where('processed', '==', false)
-            .where('scheduledTime', '<=', now)
+            .where('scheduledFor', '<=', now)
             .limit(50) // Process up to 50 notifications at a time
             .get();
         
@@ -140,14 +140,15 @@ exports.sendScheduledNotifications = onSchedule('every 1 minutes', async (event)
             const notificationData = doc.data();
             console.log('📱 🚀 ☁️ Processing scheduled notification:', doc.id);
             
-            // Get user's current FCM token
+            // Get user's current FCM token (try targetUserId first, then userId for backward compatibility)
+            const userId = notificationData.targetUserId || notificationData.userId;
             const userDoc = await admin.firestore()
                 .collection('users')
-                .doc(notificationData.userId)
+                .doc(userId)
                 .get();
             
             if (!userDoc.exists) {
-                console.log(`📱 🚀 ☁️ ⚠️ User ${notificationData.userId} not found`);
+                console.log(`📱 🚀 ☁️ ⚠️ User ${userId} not found`);
                 batch.update(doc.ref, { 
                     processed: true, 
                     failed: true, 
@@ -158,10 +159,11 @@ exports.sendScheduledNotifications = onSchedule('every 1 minutes', async (event)
             }
             
             const userData = userDoc.data();
-            const fcmToken = userData.fcmToken;
+            // Try to get FCM token from the notification data first (more reliable), then from user data
+            const fcmToken = notificationData.fcmToken || userData.fcmToken;
             
             if (!fcmToken) {
-                console.log(`📱 🚀 ☁️ ⚠️ No FCM token for user ${notificationData.userId}`);
+                console.log(`📱 🚀 ☁️ ⚠️ No FCM token for user ${userId}`);
                 batch.update(doc.ref, { 
                     processed: true, 
                     failed: true, 
@@ -197,20 +199,23 @@ exports.sendScheduledNotifications = onSchedule('every 1 minutes', async (event)
             // Send the FCM message
             const fcmPromise = admin.messaging().send(message)
                 .then((response) => {
-                    console.log(`📱 🚀 ☁️ ✅ Successfully sent scheduled push notification to ${notificationData.userId}:`, response);
+                    console.log(`📱 🚀 ☁️ ✅ Successfully sent scheduled push notification to ${userId}:`, response);
+                    console.log(`📱 🚀 ☁️ ✅ Notification type: ${notificationData.notificationType || 'unknown'}`);
                     batch.update(doc.ref, { 
                         processed: true, 
                         sentAt: admin.firestore.FieldValue.serverTimestamp(),
-                        messageId: response 
+                        messageId: response,
+                        targetUserId: userId
                     });
                 })
                 .catch((error) => {
-                    console.error(`📱 🚀 ☁️ ❌ Error sending scheduled push notification to ${notificationData.userId}:`, error);
+                    console.error(`📱 🚀 ☁️ ❌ Error sending scheduled push notification to ${userId}:`, error);
                     batch.update(doc.ref, { 
                         processed: true, 
                         failed: true, 
                         error: error.message,
-                        failedAt: admin.firestore.FieldValue.serverTimestamp() 
+                        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        targetUserId: userId
                     });
                 });
             

@@ -822,23 +822,6 @@ struct GroupDetailView: View {
             return
         }
         
-        // Check if user has completed the current prompt
-        let hasCompletedCurrentPrompt = store.entries.contains { entry in
-            let matches = entry.prompt == currentPrompt
-            print("⏰ Checking entry: '\(entry.prompt)' == '\(currentPrompt)' = \(matches)")
-            return matches
-        }
-        
-        print("⏰ hasCompletedCurrentPrompt: \(hasCompletedCurrentPrompt)")
-        
-        // CRITICAL: Only show countdown if current prompt is completed
-        guard hasCompletedCurrentPrompt else {
-            print("⏰ Current prompt not completed - no countdown until it's answered")
-            nextPromptCountdown = "Complete current prompt first"
-            return
-        }
-        
-        // If current prompt is completed, calculate time for NEXT prompt
         guard let nextPromptTime = calculateNextPromptTime() else {
             print("⏰ No next prompt time calculated")
             nextPromptCountdown = "Error calculating next prompt"
@@ -846,7 +829,7 @@ struct GroupDetailView: View {
         }
         
         let now = Date()
-        let timeInterval = nextPromptTime.timeIntervalSince(now)
+        let timeInterval = nextPromptTime.timeIntervalSince(now) 
         
         print("⏰ nextPromptTime: \(nextPromptTime)")
         print("⏰ now: \(now)")
@@ -904,7 +887,37 @@ struct GroupDetailView: View {
                 }
                 return
                 } else {
+                print("⏰ ✅ FIXING STUCK STATE: Prompt is available but user returned - making accessible")
                 nextPromptCountdown = "New prompt available!"
+                
+                // CRITICAL FIX: Ensure prompt is accessible when user returns to unlocked prompt
+                // Check if current prompt is actually completed to determine if we should show it
+                let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+                
+                if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
+                    print("⏰ ✅ Current prompt not completed - making accessible for user")
+                    showNewPromptCard = true
+                    hasUnlockedNewPrompt = true
+                    hasSeenCurrentPrompt = true
+                } else {
+                    print("⏰ ⚠️ Current prompt already completed or empty - need new prompt")
+                    // If current prompt is completed, generate a new one
+                    let newPrompt = self.generateUniquePrompt()
+                    print("⏰ 🔄 Generated new prompt for returning user: '\(newPrompt)'")
+                    currentPrompt = newPrompt
+                    
+                    // Update configuration
+                    currentPromptConfiguration = createPromptConfiguration(for: newPrompt)
+                    if let newConfig = currentPromptConfiguration {
+                        isImagePrompt = newConfig.fields.isEmpty
+                        print("⏰ 🔄 New prompt is image prompt: \(isImagePrompt)")
+                    }
+                    
+                    // Make the new prompt accessible
+                    showNewPromptCard = true
+                    hasUnlockedNewPrompt = true
+                    hasSeenCurrentPrompt = true
+                }
             }
             return
         }
@@ -1343,6 +1356,9 @@ struct GroupDetailView: View {
                         hasUnlockedNewPrompt = true
                         hasSeenCurrentPrompt = true
                         
+                        // Force the countdown to show correct state
+                        nextPromptCountdown = "New prompt available!"
+                        
                         // Show feedback if user previously saw this prompt
                         if hasSeenCurrentPrompt {
                             showNewPromptUnlockedFeedback = true
@@ -1362,6 +1378,42 @@ struct GroupDetailView: View {
                         showNewPromptCard = false
                         hasUnlockedNewPrompt = false
                         // Don't change hasSeenCurrentPrompt as user may have seen it before
+                    }
+                } else if currentPromptCompleted {
+                    print("🔍 🎬 Current prompt completed - checking if next is available")
+                    // Current prompt is completed, check if next one should be available
+                    guard let nextPromptTime = calculateNextPromptTime() else {
+                        print("🔍 🎬 ❌ Could not calculate next prompt time")
+                        return
+                    }
+                    
+                    let now = Date()
+                    let timeInterval = nextPromptTime.timeIntervalSince(now)
+                    let isNextPromptReady = timeInterval <= 0
+                    
+                    if isNextPromptReady {
+                        print("🔍 🎬 ✅ NEXT PROMPT IS READY - Generating new prompt")
+                        // Generate new prompt for user
+                        let newPrompt = generateUniquePrompt()
+                        currentPrompt = newPrompt
+                        
+                        // Update configuration
+                        currentPromptConfiguration = createPromptConfiguration(for: newPrompt)
+                        if let newConfig = currentPromptConfiguration {
+                            isImagePrompt = newConfig.fields.isEmpty
+                        }
+                        
+                        // Make the new prompt accessible
+                        showNewPromptCard = true
+                        hasUnlockedNewPrompt = true
+                        hasSeenCurrentPrompt = true
+                        nextPromptCountdown = "New prompt available!"
+                        
+                        // Auto-scroll to the new prompt
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            print("🔄 Auto-scrolling to new available prompt")
+                            shouldAutoScrollToPrompt = true
+                        }
                     }
                 }
                     // Check if prompt changed (standard logic)
@@ -1396,6 +1448,8 @@ struct GroupDetailView: View {
             // Update cached influencer status
             print("🔍 Updating influencer status...")
             updateInfluencerStatus()
+            
+
         }
         .onDisappear {
             print("🔍 GroupDetailView onDisappear - Group: \(group.name) (ID: \(group.id))")
@@ -1610,6 +1664,8 @@ struct GroupDetailView: View {
                     .frame(width: 40, height: 40)
 
                 Spacer()
+
+
 
                 Button(action: {
                     // Clear notification state before showing settings
@@ -3103,6 +3159,10 @@ struct GroupDetailView: View {
             }
         }
     }
+    
+    // MARK: - Testing Functions
+
+
 }
 
 // MARK: - Debug and Testing Methods

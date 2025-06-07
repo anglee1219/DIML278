@@ -589,43 +589,13 @@ struct GroupSettingsView: View {
             return
         }
         
-        // Send both local and FCM notifications to added members
+        // FIXED: Only send FCM notifications to added members (no local notifications)
+        // Local notifications appear on the current device (adder's phone) which is wrong!
         Task {
-            print("📱 👥 🚀 Sending notifications to \(membersToNotify.count) added members...")
+            print("📱 👥 🚀 Sending ONLY FCM notifications to \(membersToNotify.count) added members...")
+            print("📱 👥 🚫 LOCAL notifications REMOVED - they were going to adder's device!")
             
-            // 1. Send local notifications first
-            for (index, member) in membersToNotify.enumerated() {
-                print("📱 👥 🔔 [\(index + 1)] Creating LOCAL notification for \(member.name)")
-                
-                let content = UNMutableNotificationContent()
-                content.title = "👥 Added to Circle!"
-                content.body = "\(adderName) added you to '\(groupName)'"
-                content.sound = .default
-                content.badge = 1
-                
-                // Custom data for handling the tap
-                content.userInfo = [
-                    "type": "member_added",
-                    "groupId": groupId,
-                    "groupName": groupName,
-                    "adderName": adderName,
-                    "addedUserId": member.id
-                ]
-                
-                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
-                let identifier = "member_added_local_\(groupId)_\(Date().timeIntervalSince1970)_\(member.id)"
-                
-                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-                
-                do {
-                    try await UNUserNotificationCenter.current().add(request)
-                    print("📱 👥 ✅ LOCAL member added notification sent to \(member.name)")
-                } catch {
-                    print("📱 👥 ❌ Error sending LOCAL member added notification to \(member.name): \(error)")
-                }
-            }
-            
-            // 2. Send FCM push notifications
+            // Send FCM push notifications to added members' devices
             await sendMemberAddedFCMNotifications(
                 groupName: groupName,
                 adderName: adderName,
@@ -670,7 +640,19 @@ struct GroupSettingsView: View {
     }
     
     private func sendMemberAddedCloudFunctionNotification(token: String, groupName: String, adderName: String, targetUserId: String, groupId: String) async {
-        print("📱 👥 ☁️ Sending FCM notification for member added...")
+        print("📱 👥 ☁️ === MEMBER ADDED FCM NOTIFICATION DEBUG ===")
+        print("📱 👥 ☁️ Token (last 8): \(String(token.suffix(8)))")
+        print("📱 👥 ☁️ Group Name: \(groupName)")
+        print("📱 👥 ☁️ Adder: \(adderName)")
+        print("📱 👥 ☁️ Target User: \(targetUserId)")
+        print("📱 👥 ☁️ Current User: \(Auth.auth().currentUser?.uid ?? "nil")")
+        print("📱 👥 ☁️ Group ID: \(groupId)")
+        
+        // CRITICAL: Verify we're not sending to the adder
+        if targetUserId == Auth.auth().currentUser?.uid {
+            print("📱 👥 ☁️ ❌ ABORTING: Target user is the adder!")
+            return
+        }
         
         // Create notification request for Cloud Function
         let notificationRequest: [String: Any] = [
@@ -684,15 +666,28 @@ struct GroupSettingsView: View {
                 "adderName": adderName,
                 "targetUserId": targetUserId
             ],
-            "timestamp": FieldValue.serverTimestamp()
+            "timestamp": FieldValue.serverTimestamp(),
+            "processed": false,
+            "targetUserId": targetUserId,
+            "notificationType": "member_added"
         ]
+        
+        print("📱 👥 ☁️ Member added notification request data:")
+        for (key, value) in notificationRequest {
+            if key != "timestamp" {
+                print("📱 👥 ☁️   \(key): \(value)")
+            }
+        }
         
         do {
             let db = Firestore.firestore()
-            _ = try await db.collection("notificationRequests").addDocument(data: notificationRequest)
+            let docRef = try await db.collection("notificationRequests").addDocument(data: notificationRequest)
             print("📱 👥 ✅ Member added notification queued via Cloud Function for \(targetUserId)")
+            print("📱 👥 ✅ Document ID: \(docRef.documentID)")
+            print("📱 👥 ✅ CRITICAL SUCCESS: Notification request successfully added to Firestore!")
         } catch {
             print("📱 👥 ❌ Error queuing member added notification: \(error.localizedDescription)")
+            print("📱 👥 ❌ CRITICAL ERROR: \(error)")
         }
     }
 }
