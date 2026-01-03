@@ -38,7 +38,7 @@ struct GroupSettingsView: View {
     @State private var isUpdatingSettings = false
     @State private var showClearEntriesAlert = false
     @State private var showLeaveGroupAlert = false
-
+    
     
     private let promptScheduler = PromptScheduler.shared
     
@@ -705,10 +705,10 @@ struct FriendCell: View {
                 ZStack {
                     // Profile image with ProfilePictureView
                     ProfilePictureView(userId: friend.id, size: 80, groupMembers: nil)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: 3)
-                        )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 3)
+                    )
                     
                     // Selection overlay
                     if isSelected {

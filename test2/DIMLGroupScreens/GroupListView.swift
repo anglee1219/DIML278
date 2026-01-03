@@ -391,7 +391,7 @@ struct GroupListView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
+            VStack(spacing: 0) {
                 // ✅ Reusable Top Nav
                 TopNavBar(showsMenu: false)
                 
@@ -547,17 +547,17 @@ struct GroupListView: View {
                                     }
                             )
                             .onLongPressGesture(minimumDuration: 1.0) {
-                                print("🔴 DEBUG: Long press detected for group: \(group.name)")
-                                
-                                // Add haptic feedback to confirm the long press was detected
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                                impactFeedback.impactOccurred()
-                                
-                                groupToLeave = group
-                                showLeaveConfirmation = true
-                                print("🔴 DEBUG: showLeaveConfirmation set to: \(showLeaveConfirmation)")
-                                print("🔴 DEBUG: groupToLeave set to: \(group.name)")
-                            }
+                                        print("🔴 DEBUG: Long press detected for group: \(group.name)")
+                                        
+                                        // Add haptic feedback to confirm the long press was detected
+                                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                                        impactFeedback.impactOccurred()
+                                        
+                                        groupToLeave = group
+                                        showLeaveConfirmation = true
+                                        print("🔴 DEBUG: showLeaveConfirmation set to: \(showLeaveConfirmation)")
+                                        print("🔴 DEBUG: groupToLeave set to: \(group.name)")
+                                    }
                         }
                     }
                     .listStyle(.plain)
@@ -882,10 +882,10 @@ struct GroupRowContent: View {
             HStack(spacing: -8) {
                 ForEach(displayMembers, id: \.id) { member in
                     ProfilePictureView(userId: member.id, size: 40, groupMembers: group.members)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: 2)
-                        )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                    )
                 }
                 
                 // Show a "+" circle if there are more than 3 other members
@@ -943,7 +943,7 @@ struct GroupRowContent: View {
                 .fill(isPressed ? 
                     Color(red: 0.95, green: 0.94, blue: 0.92) : // Darker when pressed
                     Color(red: 0.98, green: 0.97, blue: 0.95)   // Normal color
-                )
+        )
                 .shadow(color: Color.black.opacity(isPressed ? 0.1 : 0.05), radius: isPressed ? 6 : 4, x: 0, y: 2)
         )
         .scaleEffect(isPressed ? 0.98 : 1.0) // Subtle scale effect when pressed

@@ -103,7 +103,7 @@ exports.sendPushNotification = onDocumentCreated('notificationRequests/{requestI
             error: error.message,
             errorCode: error.code,
             targetUserId: targetUserId,
-            failedAt: admin.firestore.FieldValue.serverTimestamp()
+            failedAt: admin.firestore.FieldValue.serverTimestamp() 
         });
         
         // Don't throw the error - just log it and mark as failed

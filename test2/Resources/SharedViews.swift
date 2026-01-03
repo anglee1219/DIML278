@@ -648,6 +648,13 @@ struct ProfilePictureView: View {
         .onAppear {
             loadUserData()
         }
+        .onChange(of: groupMembers?.first(where: { $0.id == userId })?.profileImageUrl) { newUrl in
+            // Reload image when group member's profileImageUrl changes
+            if newUrl != nil {
+                print("🔄 ProfilePictureView: Group member profileImageUrl changed, reloading...")
+                loadUserData()
+            }
+        }
     }
     
     private func loadUserData() {
@@ -678,61 +685,106 @@ struct ProfilePictureView: View {
     }
     
     private func loadProfileImage() {
-        // First try to get profile image URL from group members data
+        let currentUserId = Auth.auth().currentUser?.uid ?? ""
+        
+        // Strategy 1: Try group member data if available and has URL
         if let groupMembers = groupMembers,
            let member = groupMembers.first(where: { $0.id == userId }),
            let profileImageUrl = member.profileImageUrl,
            !profileImageUrl.isEmpty,
            let url = URL(string: profileImageUrl) {
             
-            print("📸 ProfilePictureView: Loading profile image from group member data for user \(userId)")
+            print("📸 ProfilePictureView: Attempting to load from group member data for user \(userId)")
             
-            // Use URLSession to download from the stored URL
             Task {
                 do {
-                    let (data, _) = try await URLSession.shared.data(from: url)
+                    let (data, response) = try await URLSession.shared.data(from: url)
+                    
+                    // Check HTTP response
+                    if let httpResponse = response as? HTTPURLResponse {
+                        if httpResponse.statusCode != 200 {
+                            print("❌ ProfilePictureView: HTTP error \(httpResponse.statusCode) for group member URL")
+                            // Try fallback sources - group member URL might be stale
+                            tryFallbackSources()
+                            return
+                        }
+                    }
+                    
+                    // Validate image data
+                    guard let image = UIImage(data: data) else {
+                        print("❌ ProfilePictureView: Invalid image data from group member URL")
+                        // Try fallback sources - might be stale or invalid
+                        tryFallbackSources()
+                        return
+                    }
+                    
                     await MainActor.run {
-                        self.profileImage = UIImage(data: data)
-                        print("✅ ProfilePictureView: Successfully loaded profile image for user \(userId)")
+                        self.profileImage = image
+                        print("✅ ProfilePictureView: Successfully loaded profile image from group member data for user \(userId)")
                     }
                 } catch {
-                    print("❌ ProfilePictureView: Failed to load profile image from URL for user \(userId): \(error)")
-                    // Fallback to Firebase Storage direct path as backup
-                    loadProfileImageFromStorage()
+                    print("❌ ProfilePictureView: Failed to load profile image from group member URL: \(error)")
+                    // Try fallback sources - group member URL might not exist or be accessible
+                    tryFallbackSources()
                 }
             }
         } else {
-            // Fallback to current user's stored profile image URL if it's the current user
-            let currentUserId = Auth.auth().currentUser?.uid ?? ""
-            if userId == currentUserId {
-                if let profileImageUrl = UserDefaults.standard.string(forKey: "profile_image_url_\(userId)"),
-                   !profileImageUrl.isEmpty,
-                   let url = URL(string: profileImageUrl) {
-                    
-                    print("📸 ProfilePictureView: Loading current user's profile image from UserDefaults URL")
-                    
-                    Task {
-                        do {
-                            let (data, _) = try await URLSession.shared.data(from: url)
+            // Group member data doesn't have URL or doesn't exist - try fallback sources
+            print("📸 ProfilePictureView: Group member data missing or has no profileImageUrl for user \(userId), trying fallback sources")
+            tryFallbackSources()
+        }
+    }
+    
+    private func tryFallbackSources() {
+        let currentUserId = Auth.auth().currentUser?.uid ?? ""
+        
+        // For current user: try UserDefaults URL first, then cache, then Firestore
+        if userId == currentUserId {
+            // Try UserDefaults URL
+            if let profileImageUrl = UserDefaults.standard.string(forKey: "profile_image_url_\(userId)"),
+               !profileImageUrl.isEmpty,
+               let url = URL(string: profileImageUrl) {
+                
+                print("📸 ProfilePictureView: Loading current user's profile image from UserDefaults URL")
+                
+                Task {
+                    do {
+                        let (data, _) = try await URLSession.shared.data(from: url)
+                        if let image = UIImage(data: data) {
                             await MainActor.run {
-                                self.profileImage = UIImage(data: data)
-                                print("✅ ProfilePictureView: Successfully loaded current user's profile image")
+                                self.profileImage = image
+                                print("✅ ProfilePictureView: Successfully loaded current user's profile image from UserDefaults")
                             }
-                        } catch {
-                            print("❌ ProfilePictureView: Failed to load current user's profile image: \(error)")
-                            // Try cached image data as final fallback
-                            loadCachedProfileImage()
+                        } else {
+                            tryCachedOrFirestore()
                         }
+                    } catch {
+                        print("❌ ProfilePictureView: Failed to load from UserDefaults URL: \(error)")
+                        tryCachedOrFirestore()
                     }
-                } else {
-                    // Try cached image data for current user
-                    loadCachedProfileImage()
                 }
-            } else {
-                // For other users, fetch their profile data from Firestore
-                print("📸 ProfilePictureView: Fetching profile data from Firestore for user \(userId)")
-                fetchUserProfileImage()
+                return
             }
+            
+            // Try cached image
+            tryCachedOrFirestore()
+        } else {
+            // For other users: try Firestore directly (most reliable)
+            print("📸 ProfilePictureView: Fetching profile image from Firestore for user \(userId)")
+            fetchUserProfileImage()
+        }
+    }
+    
+    private func tryCachedOrFirestore() {
+        // Try cached image first (fastest)
+        if let cachedImageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(userId)"),
+           let cachedImage = UIImage(data: cachedImageData) {
+            print("✅ ProfilePictureView: Loaded cached profile image for user \(userId)")
+            self.profileImage = cachedImage
+        } else {
+            // Finally try Firestore
+            print("📸 ProfilePictureView: No cached image, fetching from Firestore for user \(userId)")
+            fetchUserProfileImage()
         }
     }
     
@@ -778,18 +830,39 @@ struct ProfilePictureView: View {
                       !profileImageUrl.isEmpty,
                       let url = URL(string: profileImageUrl) else {
                     print("📸 ProfilePictureView: No profile image URL found in Firestore for user \(userId)")
+                    // Try loading directly from Storage as final fallback
+                    loadProfileImageFromStorage()
                     return
                 }
                 
-                print("📸 ProfilePictureView: Found profile image URL in Firestore for user \(userId)")
+                print("📸 ProfilePictureView: Found profile image URL in Firestore for user \(userId): \(profileImageUrl)")
                 
-                let (imageData, _) = try await URLSession.shared.data(from: url)
+                let (imageData, response) = try await URLSession.shared.data(from: url)
+                
+                // Check HTTP response
+                if let httpResponse = response as? HTTPURLResponse {
+                    if httpResponse.statusCode != 200 {
+                        print("❌ ProfilePictureView: HTTP error \(httpResponse.statusCode) for Firestore URL")
+                        loadProfileImageFromStorage()
+                        return
+                    }
+                }
+                
+                // Validate image data
+                guard let image = UIImage(data: imageData) else {
+                    print("❌ ProfilePictureView: Invalid image data from Firestore URL")
+                    loadProfileImageFromStorage()
+                    return
+                }
+                
                 await MainActor.run {
-                    self.profileImage = UIImage(data: imageData)
+                    self.profileImage = image
                     print("✅ ProfilePictureView: Successfully loaded profile image from Firestore URL for user \(userId)")
                 }
             } catch {
                 print("❌ ProfilePictureView: Failed to fetch profile image from Firestore for user \(userId): \(error)")
+                // Try loading directly from Storage as final fallback
+                loadProfileImageFromStorage()
             }
         }
     }
@@ -974,3 +1047,4 @@ extension View {
         transform(self)
     }
 } 
+

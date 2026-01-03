@@ -34,7 +34,7 @@ struct TopNavBar: View {
                     Image("DIML_Logo")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 60, height: 60)
+                        .frame(width: 40, height: 40)
 
                     Spacer()
 
@@ -52,7 +52,7 @@ struct TopNavBar: View {
                 }
                 .padding(.horizontal, 16)
             }
-            .frame(height: 60)
+            .frame(height: 50)
         }
         .background(Color(red: 1, green: 0.988, blue: 0.929))
     }

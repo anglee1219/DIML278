@@ -137,7 +137,8 @@ struct GroupDetailView: View {
             id: Auth.auth().currentUser?.uid ?? "", // Use actual Firebase Auth ID
             name: profile.name,
             username: "@\(profile.name.lowercased())",
-            role: .admin
+            role: .admin,
+            pronouns: profile.pronouns.isEmpty ? nil : profile.pronouns
         )
     }
 
@@ -815,6 +816,7 @@ struct GroupDetailView: View {
         print("⏰ isInfluencer: \(isInfluencer)")
         print("⏰ currentPrompt: '\(currentPrompt)'")
         print("⏰ store.entries count: \(store.entries.count)")
+        print("⏰ showNewPromptCard: \(showNewPromptCard)")
         
         guard isInfluencer else {
             print("⏰ Not influencer, clearing countdown")
@@ -822,8 +824,29 @@ struct GroupDetailView: View {
             return
         }
         
+        // Check if we have an unlocked prompt that's waiting to be revealed
+        // If so, don't override the "New prompt available!" state
+        let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+        if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty && nextPromptCountdown == "New prompt available!" {
+            print("⏰ Prompt is unlocked and waiting to be revealed - keeping 'New prompt available!'")
+            // Don't recalculate - keep the ready state
+            return
+        }
+        
         guard let nextPromptTime = calculateNextPromptTime() else {
             print("⏰ No next prompt time calculated")
+            // Don't set error if we have entries but prompt isn't completed - might be waiting for reveal
+            if !store.entries.isEmpty {
+                let hasCompleted = store.entries.contains { $0.prompt == currentPrompt }
+                if !hasCompleted {
+                    print("⏰ Prompt not completed - might be waiting to be revealed")
+                    // Keep existing countdown or set to ready if unlocked
+                    if nextPromptCountdown.isEmpty {
+                        nextPromptCountdown = "New prompt available!"
+                    }
+                    return
+                }
+            }
             nextPromptCountdown = "Error calculating next prompt"
             return
         }
@@ -1173,6 +1196,9 @@ struct GroupDetailView: View {
             Text(errorMessage)
         }
         .onAppear {
+            print("🔍 ========================================")
+            print("🔍 ====== GroupDetailView onAppear ======")
+            print("🔍 ========================================")
             print("🔍 GroupDetailView onAppear - Group: \(group.name) (ID: \(group.id))")
             print("🔍 🎬 User now actively viewing chat - animations enabled")
             
@@ -1203,10 +1229,15 @@ struct GroupDetailView: View {
             }
             
             // Always load/check daily prompt first
+            print("🔍 ====== onAppear STARTING ======")
             print("🔍 Loading daily prompt...")
             let oldPrompt = currentPrompt
             loadDailyPrompt()
             print("🔍 Loaded prompt: '\(currentPrompt)'")
+            print("🔍 isInfluencer: \(isInfluencer)")
+            print("🔍 cameFromNotification: \(cameFromNotification)")
+            print("🔍 shouldTriggerNotificationUnlock: \(shouldTriggerNotificationUnlock)")
+            print("🔍 hasNewPromptReadyForAnimation: \(hasNewPromptReadyForAnimation)")
             
             // Handle notification-triggered unlock flow
             if cameFromNotification && shouldTriggerNotificationUnlock {
@@ -1328,56 +1359,90 @@ struct GroupDetailView: View {
                     }
                 }
             } else if isInfluencer {
+                print("🔍 🎬 ====== INFLUENCER FLOW ======")
                 // Check if there's an unlocked prompt that hasn't been answered (but user has left and returned)
                 let currentPromptCompleted = store.entries.contains { $0.prompt == currentPrompt }
+                print("🔍 🎬 currentPromptCompleted: \(currentPromptCompleted)")
+                print("🔍 🎬 currentPrompt.isEmpty: \(currentPrompt.isEmpty)")
+                print("🔍 🎬 currentPrompt: '\(currentPrompt)'")
+                
                 if !currentPromptCompleted && !currentPrompt.isEmpty {
-                    print("🔍 🎬 CHECKING IF PROMPT IS ACTUALLY UNLOCKED...")
+                    // Influencer hasn't completed their prompt yet
+                    print("🔍 🎬 ✅ CONDITIONS MET: Influencer has incomplete prompt - checking unlock status")
                     print("🔍 🎬 Current prompt: '\(currentPrompt)'")
                     
-                    // CRITICAL FIX: Only show prompt card if the prompt is ACTUALLY unlocked (timing check)
-                    guard let nextPromptTime = calculateNextPromptTime() else {
-                        print("🔍 🎬 ❌ Could not calculate next prompt time")
-                        return
+                    // Check if prompt is actually unlocked
+                    // If we can't calculate next prompt time, assume it's unlocked (first prompt or edge case)
+                    var isActuallyUnlocked = true
+                    if let nextPromptTime = calculateNextPromptTime() {
+                        let now = Date()
+                        let timeInterval = nextPromptTime.timeIntervalSince(now)
+                        isActuallyUnlocked = timeInterval <= 0
+                        print("🔍 🎬 Prompt unlock status: \(isActuallyUnlocked ? "UNLOCKED" : "LOCKED")")
+                        print("🔍 🎬 Time interval: \(timeInterval) seconds")
+                    } else {
+                        print("🔍 🎬 ⚠️ Could not calculate next prompt time - assuming unlocked (likely first prompt)")
                     }
                     
-                    let now = Date()
-                    let timeInterval = nextPromptTime.timeIntervalSince(now)
-                    let isActuallyUnlocked = timeInterval <= 0
+                    // Always proceed with scroll/animation if prompt is not completed
+                    // (Don't require unlock check to pass - if user has incomplete prompt, show it)
+                    print("🔍 🎬 Proceeding with scroll/animation setup")
                     
-                    print("🔍 🎬 Next prompt time: \(nextPromptTime)")
-                    print("🔍 🎬 Current time: \(now)")
-                    print("🔍 🎬 Time remaining: \(timeInterval) seconds")
-                    print("🔍 🎬 Is actually unlocked: \(isActuallyUnlocked)")
-                    
-                    if isActuallyUnlocked {
-                        print("🔍 🎬 ✅ PROMPT IS TRULY UNLOCKED - Making accessible")
-                        // Only set prompt card states if truly unlocked
-                        showNewPromptCard = true
-                        hasUnlockedNewPrompt = true
-                        hasSeenCurrentPrompt = true
-                        
-                        // Force the countdown to show correct state
-                        nextPromptCountdown = "New prompt available!"
-                        
-                        // Show feedback if user previously saw this prompt
-                        if hasSeenCurrentPrompt {
-                            showNewPromptUnlockedFeedback = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                                showNewPromptUnlockedFeedback = false
-                            }
-                        }
-                        
-                        // Auto-scroll to the prompt (but no animation)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            print("🔄 Auto-scrolling to available prompt")
-                            shouldAutoScrollToPrompt = true
-                        }
-                    } else {
-                        print("🔍 🎬 ⏰ PROMPT IS STILL LOCKED - Keeping countdown display")
-                        // Make sure prompt card states are cleared for locked prompts
+                    // For scroll and animation flow:
+                    // 1. If unlocked: show countdown (which will say "Ready to unlock!"), then animate to reveal prompt
+                    // 2. If locked: show countdown with timer, no animation
+                    if isActuallyUnlocked || store.entries.isEmpty {
+                        print("🔍 🎬 ✅ PROMPT IS UNLOCKED - Will show countdown then animate")
+                        // DON'T set showNewPromptCard yet - show countdown timer first
                         showNewPromptCard = false
                         hasUnlockedNewPrompt = false
-                        // Don't change hasSeenCurrentPrompt as user may have seen it before
+                        // Set countdown to "ready" state so countdown timer shows "Ready to unlock!"
+                        // This ensures the countdown timer displays correctly
+                        if isActuallyUnlocked {
+                            nextPromptCountdown = "New prompt available!"
+                        } else {
+                            // For first prompt (no entries), also set to ready
+                            nextPromptCountdown = "New prompt available!"
+                        }
+                        
+                        // Force countdown update to ensure it's displayed
+                        updateCountdown()
+                        
+                        // Since prompt is not completed, always animate
+                        // Wait for entries to load and UI to settle, then scroll, then animate
+                        print("🔍 🎬 Prompt not completed - will load entries, scroll to countdown, then animate")
+                        print("🔍 🎬 Current entries count: \(store.entries.count)")
+                        print("🔍 🎬 Setting up scroll and animation sequence")
+                        print("🔍 🎬 Current shouldAutoScrollToPrompt value: \(shouldAutoScrollToPrompt)")
+                        
+                        // Wait for entries to load and UI to settle (2.0 seconds to ensure everything is rendered)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            print("🔄 ====== SCROLL SEQUENCE STARTING ======")
+                            print("🔄 Step 1: About to set shouldAutoScrollToPrompt = true")
+                            print("🔄 Entries count now: \(store.entries.count)")
+                            print("🔄 Current value before change: \(shouldAutoScrollToPrompt)")
+                            
+                            // Set directly on main thread - this should trigger onChange
+                            shouldAutoScrollToPrompt = true
+                            
+                            // Force UI update
+                            DispatchQueue.main.async {
+                                print("🔄 Value after setting: \(shouldAutoScrollToPrompt)")
+                                print("🔄 Waiting for onChange to fire...")
+                            }
+                            
+                            // After scroll completes, trigger animation (3.5 seconds after scroll starts to allow for retries)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                                print("🔍 🎬 Step 2: Triggering unlock animation (will transform countdown → prompt)")
+                                triggerPromptUnlockAnimation(newPrompt: currentPrompt)
+                            }
+                        }
+                    } else {
+                        print("🔍 🎬 ⏰ PROMPT IS STILL LOCKED - Showing countdown only (no animation)")
+                        showNewPromptCard = false
+                        hasUnlockedNewPrompt = false
+                        // Update countdown to show time remaining
+                        updateCountdown()
                     }
                 } else if currentPromptCompleted {
                     print("🔍 🎬 Current prompt completed - checking if next is available")
@@ -1406,37 +1471,27 @@ struct GroupDetailView: View {
                         // Make the new prompt accessible
                         showNewPromptCard = true
                         hasUnlockedNewPrompt = true
-                        hasSeenCurrentPrompt = true
+                        hasSeenCurrentPrompt = false // New prompt, haven't seen it yet
                         nextPromptCountdown = "New prompt available!"
                         
-                        // Auto-scroll to the new prompt
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            print("🔄 Auto-scrolling to new available prompt")
-                            shouldAutoScrollToPrompt = true
+                        // Wait for entries to load, then scroll and animate
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            print("🔄 Auto-scrolling to new prompt")
+                            self.shouldAutoScrollToPrompt = true
+                            print("🔄 shouldAutoScrollToPrompt set to: \(self.shouldAutoScrollToPrompt)")
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                                print("🔍 🎬 Triggering unlock animation for new prompt")
+                                self.triggerPromptUnlockAnimation(newPrompt: newPrompt)
+                            }
                         }
                     }
                 }
                     // Check if prompt changed (standard logic)
-                if currentPrompt != oldPrompt && !currentPrompt.isEmpty && !oldPrompt.isEmpty {
-                        print("🔍 New prompt detected: '\(currentPrompt)', triggering animation")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        triggerPromptUnlockAnimation(newPrompt: currentPrompt)
+                    if currentPrompt != oldPrompt && !currentPrompt.isEmpty && !oldPrompt.isEmpty {
+                        print("🔍 New prompt detected: '\(currentPrompt)'")
+                        // This will be handled by the above logic
                     }
-                }
-                
-                    // Auto-scroll to active prompt for influencers when main view appears
-                    let isCurrentPromptCompleted = store.entries.contains { $0.prompt == currentPrompt }
-                    print("🔄 Auto-scroll check: currentPrompt='\(currentPrompt)', hasCompleted=\(isCurrentPromptCompleted)")
-                
-                if !isCurrentPromptCompleted && !currentPrompt.isEmpty {
-                        print("🔄 Scheduling auto-scroll to activePrompt in 1.0 seconds")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        print("🔄 Triggering auto-scroll...")
-                        shouldAutoScrollToPrompt = true
-                    }
-                } else {
-                    print("🔄 Auto-scroll skipped: prompt completed or empty")
-                }
             } else {
                 print("🔄 Auto-scroll skipped: not influencer")
                 }
@@ -1514,8 +1569,9 @@ struct GroupDetailView: View {
     // MARK: - View Components
     
     private var topBarView: some View {
-        VStack(spacing: 0) {
-            // Feed update banners
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // Feed update banners
             if isRefreshing {
                 HStack {
                     Image(systemName: "arrow.clockwise")
@@ -1661,7 +1717,8 @@ struct GroupDetailView: View {
 
                 Image("DIML_Logo")
                     .resizable()
-                    .frame(width: 40, height: 40)
+                    .scaledToFit()
+                    .frame(width: 32, height: 32)
 
                 Spacer()
 
@@ -1683,8 +1740,14 @@ struct GroupDetailView: View {
                 .buttonStyle(PlainButtonStyle()) // iOS 18.5 compatibility
             }
             .padding(.horizontal)
-            .padding(.top, 12)
+            .padding(.vertical, 8)
+            }
+            .frame(width: geometry.size.width)
+            .offset(y: -geometry.safeAreaInsets.top - 20)
         }
+        .frame(height: 60)
+        .background(Color(red: 1, green: 0.989, blue: 0.93))
+        .ignoresSafeArea(edges: .top)
         .animation(.easeInOut(duration: 0.3), value: showPromptCompletedFeedback)
         .animation(.easeInOut(duration: 0.3), value: showNewPromptUnlockedFeedback)
     }
@@ -1708,15 +1771,31 @@ struct GroupDetailView: View {
                         shouldScrollToResponse = false
                     }
                 }
-                .onChange(of: shouldAutoScrollToPrompt) { shouldScroll in
-                    if shouldScroll {
-                        print("🔄 Executing auto-scroll to activePrompt")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            withAnimation(.easeInOut(duration: 1.0)) {
-                                proxy.scrollTo("activePrompt", anchor: .center)
-                            }
-                        }
+                .onChange(of: shouldAutoScrollToPrompt) { newValue in
+                    print("🔄 ⚡ onChange FIRED for shouldAutoScrollToPrompt: \(newValue)")
+                    if newValue {
+                        print("🔄 ⚡ Starting scroll sequence...")
+                        // Reset immediately to prevent multiple triggers
                         shouldAutoScrollToPrompt = false
+                        
+                        // Use Task for async delays
+                        Task { @MainActor in
+                            // Give UI time to fully render - try multiple times with increasing delays
+                            for attempt in 1...3 {
+                                let delay = UInt64(attempt * 400_000_000) // 0.4s, 0.8s, 1.2s
+                                try? await Task.sleep(nanoseconds: delay)
+                                print("🔄 Scroll attempt \(attempt)/3: Executing scrollTo('activePrompt')")
+                                
+                                // Try with animation on all attempts for smoother experience
+                                withAnimation(.easeInOut(duration: 0.8)) {
+                                    proxy.scrollTo("activePrompt", anchor: .top)
+                                }
+                                print("🔄 Scroll attempt \(attempt)/3 completed")
+                            }
+                            print("🔄 ✅ All scroll attempts finished")
+                        }
+                    } else {
+                        print("🔄 ⚡ onChange received false value - ignoring")
                     }
                 }
                 .onAppear {
@@ -1735,22 +1814,13 @@ struct GroupDetailView: View {
                 }
         )
         .onAppear {
-            // Auto-scroll to active prompt for influencers when main view appears
             print("🔄 Main content view appeared")
+            // Add backup scroll attempt here if needed
             if isInfluencer {
                 let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
-                print("🔄 Auto-scroll check: isInfluencer=\(isInfluencer), currentPrompt='\(currentPrompt)', hasCompleted=\(hasCompletedCurrentPrompt)")
-                
                 if !hasCompletedCurrentPrompt && !currentPrompt.isEmpty {
-                    print("🔄 Scheduling auto-scroll to activePrompt in 0.8 seconds")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        shouldAutoScrollToPrompt = true
-                    }
-                } else {
-                    print("🔄 Auto-scroll skipped: prompt completed or empty")
+                    print("🔄 Backup: Will attempt scroll after view is ready")
                 }
-            } else {
-                print("🔄 Auto-scroll skipped: not influencer")
             }
         }
     }
@@ -1861,7 +1931,9 @@ struct GroupDetailView: View {
                     .fontWeight(.bold)
                     .foregroundColor(Color(red: 1.0, green: 0.815, blue: 0.0))
                 
-                Text("she/her") // This could be made dynamic later
+                // Show current user's actual pronouns (they are the influencer)
+                let pronounsToShow = (currentUser.pronouns?.isEmpty == false) ? currentUser.pronouns! : "pronouns"
+                Text(pronounsToShow)
                     .font(.custom("Fredoka-Regular", size: 14))
                     .foregroundColor(.gray)
             }
@@ -2376,7 +2448,9 @@ struct GroupDetailView: View {
                     .fontWeight(.bold)
                     .foregroundColor(Color(red: 1.0, green: 0.815, blue: 0.0))
                 
-                Text("she/her · Today's Influencer") // This could be made dynamic later
+                // Show influencer's actual pronouns, or "pronouns" if not set
+                let pronounsText = (influencer?.pronouns?.isEmpty == false) ? influencer!.pronouns! : "pronouns"
+                Text("\(pronounsText) · Today's Influencer")
                     .font(.custom("Fredoka-Regular", size: 14))
                     .foregroundColor(.gray)
             }
@@ -2536,21 +2610,41 @@ struct GroupDetailView: View {
     }
     
     private var animatedCountdownTimerView: some View {
-        VStack(spacing: 16) {
-            let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
-            let isInitialPrompt = store.entries.isEmpty
-            
-            // CORRECTED LOGIC: Show prompt card when:
-            // 1. No entries yet (very first prompt)
-            // 2. During unlock animation 
-            // 3. After unlock animation is complete (showNewPromptCard = true)
-            // 4. Current prompt hasn't been completed yet (active prompt state)
-            // 5. CRITICAL FIX: Always show if prompt is unlocked and not completed, regardless of hasSeenCurrentPrompt
-            let shouldShowPromptCard = isInitialPrompt || 
-                                     isUnlockingPrompt || 
-                                     showNewPromptCard ||
-                                     (!hasCompletedCurrentPrompt && !currentPrompt.isEmpty)
-            
+        let hasCompletedCurrentPrompt = store.entries.contains { $0.prompt == currentPrompt }
+        let isInitialPrompt = store.entries.isEmpty
+        
+        // CORRECTED LOGIC: Show prompt card when:
+        // 1. No entries yet (very first prompt) - show immediately
+        // 2. During unlock animation - show during transformation
+        // 3. After unlock animation is complete (showNewPromptCard = true) - show final revealed state
+        // DO NOT show prompt card if it's not completed but not yet revealed - show countdown instead
+        let shouldShowPromptCard = isInitialPrompt || 
+                                 isUnlockingPrompt || 
+                                 showNewPromptCard
+        
+        // Show countdown timer if prompt exists but hasn't been revealed yet
+        // OR when current prompt is completed (waiting for next)
+        let shouldShowCountdown = !shouldShowPromptCard && !currentPrompt.isEmpty
+        
+        // Calculate lock icon and color for countdown timer
+        let isReadyToUnlock = nextPromptCountdown == "New prompt available!" || isUnlockingPrompt
+        let lockColor: Color = isReadyToUnlock ? .green : .gray
+        let lockIconName = isReadyToUnlock ? "lock.open.fill" : "lock.fill"
+        
+        // Debug logging
+        let _ = {
+            print("🎬 animatedCountdownTimerView rendering:")
+            print("🎬 - shouldShowPromptCard: \(shouldShowPromptCard)")
+            print("🎬 - shouldShowCountdown: \(shouldShowCountdown)")
+            print("🎬 - currentPrompt.isEmpty: \(currentPrompt.isEmpty)")
+            print("🎬 - isInitialPrompt: \(isInitialPrompt)")
+            print("🎬 - isUnlockingPrompt: \(isUnlockingPrompt)")
+            print("🎬 - showNewPromptCard: \(showNewPromptCard)")
+            print("🎬 - hasCompletedCurrentPrompt: \(hasCompletedCurrentPrompt)")
+            return ()
+        }()
+        
+        return VStack(spacing: 16) {
             if shouldShowPromptCard {
                 // Show the prompt card with enhanced unlock animation
                 if let config = currentPromptConfiguration {
@@ -2620,6 +2714,103 @@ struct GroupDetailView: View {
                         .foregroundColor(.gray)
                         .padding()
                 }
+            } else if shouldShowCountdown {
+                // Show countdown timer when prompt exists but hasn't been revealed yet
+                // OR when current prompt is completed
+                let _ = {
+                    print("🎬 Rendering countdown timer - shouldShowCountdown=true")
+                    print("🎬 nextPromptCountdown: '\(nextPromptCountdown)'")
+                    print("🎬 hasCompletedCurrentPrompt: \(hasCompletedCurrentPrompt)")
+                    return ()
+                }()
+                
+                HStack {
+                    // Enhanced animated lock icon with more dramatic effects
+                    ZStack {
+                        // Glow effect when animating
+                        if animateCountdownRefresh {
+                            Circle()
+                                .fill(Color.yellow.opacity(0.3))
+                                .frame(width: 40, height: 40)
+                                .scaleEffect(animateCountdownRefresh ? 1.5 : 1.0)
+                                .opacity(animateCountdownRefresh ? 0.0 : 1.0)
+                                .animation(.easeOut(duration: 0.8), value: animateCountdownRefresh)
+                        }
+                        
+                        Image(systemName: lockIconName)
+                            .foregroundColor(lockColor)
+                            .font(.title2)
+                            .rotationEffect(.degrees(animateCountdownRefresh ? 360 : 0))
+                            .scaleEffect(animateCountdownRefresh ? 1.2 : 1.0)
+                            .rotation3DEffect(
+                                .degrees(isUnlockingPrompt ? 180 : 0),
+                                axis: (x: 0, y: 1, z: 0)
+                            )
+                            .animation(.easeInOut(duration: 0.8), value: animateCountdownRefresh)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.5), value: isUnlockingPrompt)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(hasCompletedCurrentPrompt ? "Next Prompt Unlocking in..." : "Prompt Unlocking in...")
+                            .font(.custom("Fredoka-Regular", size: 14))
+                            .foregroundColor(.gray)
+                        
+                        if nextPromptCountdown == "New prompt available!" {
+                            Text("Ready to unlock!")
+                                .font(.custom("Fredoka-Medium", size: 16))
+                                .foregroundColor(.green)
+                                .scaleEffect(animateCountdownRefresh ? 1.1 : 1.0)
+                                .animation(.spring(response: 0.4, dampingFraction: 0.6), value: animateCountdownRefresh)
+                        } else if !nextPromptCountdown.isEmpty {
+                            Text(nextPromptCountdown)
+                                .font(.custom("Fredoka-Medium", size: 16))
+                                .foregroundColor(.black)
+                        } else {
+                            Text("Calculating...")
+                                .font(.custom("Fredoka-Medium", size: 16))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(isUnlockingPrompt ? 
+                              LinearGradient(
+                                colors: [Color.green.opacity(0.2), Color.yellow.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                              ) :
+                              LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.95, blue: 0.80)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                              )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(
+                                    animateCountdownRefresh ? 
+                                    LinearGradient(
+                                        colors: [Color.green, Color.yellow],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ) : 
+                                    LinearGradient(colors: [Color.clear], startPoint: .top, endPoint: .bottom),
+                                    lineWidth: animateCountdownRefresh ? 3 : 0
+                                )
+                                .animation(.easeInOut(duration: 0.3), value: animateCountdownRefresh)
+                        )
+                )
+                .scaleEffect(animateCountdownRefresh ? 1.03 : 1.0)
+                .rotation3DEffect(
+                    .degrees(isUnlockingPrompt ? 5 : 0),
+                    axis: (x: 1, y: 0, z: 0)
+                )
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: animateCountdownRefresh)
+                .animation(.spring(response: 0.6, dampingFraction: 0.5), value: isUnlockingPrompt)
+                .transition(.scale.combined(with: .opacity))
             } else if hasCompletedCurrentPrompt && !isInitialPrompt {
                 // COUNTDOWN TIMER: Only show after prompt has been completed
                 // This replaces the prompt card when user has uploaded their response

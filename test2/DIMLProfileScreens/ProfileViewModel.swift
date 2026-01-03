@@ -588,10 +588,14 @@ class ProfileViewModel: ObservableObject {
     }
     
     // Method to update group member information when profile changes
-    private func updateGroupMemberInformation(userId: String) {
+    private func updateGroupMemberInformation(userId: String, profileImageURL: String? = nil) {
         print("🔄 ProfileViewModel: Updating group member information for user: \(userId)")
         
         let db = Firestore.firestore()
+        
+        // Use provided URL or fallback to UserDefaults
+        let imageURL = profileImageURL ?? UserDefaults.standard.string(forKey: "profile_image_url_\(userId)") ?? ""
+        print("🔄 ProfileViewModel: Using profileImageURL: \(imageURL.isEmpty ? "empty" : imageURL)")
         
         // Find all groups where this user is a member
         db.collection("groups")
@@ -638,9 +642,9 @@ class ProfileViewModel: ObservableObject {
                             updatedMemberData["location"] = self.location
                             updatedMemberData["school"] = self.school
                             updatedMemberData["interests"] = self.interests
-                            // Include profile image URL
-                            updatedMemberData["profileImageURL"] = UserDefaults.standard.string(forKey: "profile_image_url_\(userId)") ?? ""
-                            print("✅ Updated member data for user \(userId) in group \(groupId)")
+                            // Include profile image URL (use the one passed in or from UserDefaults)
+                            updatedMemberData["profileImageURL"] = imageURL
+                            print("✅ Updated member data for user \(userId) in group \(groupId) with profileImageURL: \(imageURL.isEmpty ? "empty" : "set")")
                         }
                         
                         return updatedMemberData
@@ -654,7 +658,7 @@ class ProfileViewModel: ObservableObject {
                         if let error = error {
                             print("❌ Error updating member data in group \(groupId): \(error.localizedDescription)")
                         } else {
-                            print("✅ Successfully updated member data in group \(groupId)")
+                            print("✅ Successfully updated member data in group \(groupId) - groups will auto-refresh via listener")
                         }
                     }
                 }
@@ -713,13 +717,15 @@ class ProfileViewModel: ObservableObject {
                         if let error = error {
                             print("Error saving profile image URL: \(error.localizedDescription)")
                         } else {
-                            print("Profile image URL saved successfully")
+                            print("✅ ProfileViewModel: Profile image URL saved successfully to Firestore: \(downloadURL.absoluteString)")
                             // Cache the compressed image data with user-specific key
                             UserDefaults.standard.set(compressedImageData, forKey: "cached_profile_image_\(userId)")
                             UserDefaults.standard.set(downloadURL.absoluteString, forKey: "profile_image_url_\(userId)")
+                            UserDefaults.standard.synchronize()
                             
                             // Update group member information with new profile image URL
-                            self.updateGroupMemberInformation(userId: userId)
+                            // Pass the URL directly to ensure we use the latest one
+                            self.updateGroupMemberInformation(userId: userId, profileImageURL: downloadURL.absoluteString)
                         }
                     }
                 }
