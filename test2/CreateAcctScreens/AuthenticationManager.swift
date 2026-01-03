@@ -239,7 +239,7 @@ class AuthenticationManager: ObservableObject {
                 print("🔴 Updated AuthenticationManager properties on main thread")
             }
             
-            // Clear all user data from UserDefaults
+            // Clear all user data from UserDefaults (including user-specific keys)
             let userDefaultsKeys = [
                 "profile_name",
                 "profile_username",
@@ -249,13 +249,14 @@ class AuthenticationManager: ObservableObject {
                 "profile_school",
                 "profile_interests",
                 "profile_image",
-                "profile_image_url",
+                "profile_image_url",  // Generic key
+                "profile_image_url_\(userId)",  // User-specific key
                 "profile_birthday",
                 "privacy_show_location",
                 "privacy_show_school",
                 "pending_email",
                 "pending_password",
-                "cached_profile_image_\(userId)"
+                "cached_profile_image_\(userId)"  // User-specific cached image
             ]
             
             userDefaultsKeys.forEach { key in
