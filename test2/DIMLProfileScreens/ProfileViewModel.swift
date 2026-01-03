@@ -174,8 +174,16 @@ class ProfileViewModel: ObservableObject {
         self.showLocation = true
         self.showSchool = true
         
-        if let imageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(Auth.auth().currentUser?.uid ?? "")") {
+        // Load cached profile image - use isInitializing to prevent triggering saveProfileImage()
+        if let userId = Auth.auth().currentUser?.uid,
+           let imageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(userId)") {
+            print("🖼️ ProfileViewModel: Loading cached profile image in loadInitialData()")
+            let wasInitializing = self.isInitializing
+            self.isInitializing = true
             self.profileImageData = imageData
+            self.isInitializing = wasInitializing
+        } else {
+            print("🖼️ ProfileViewModel: No cached profile image found in loadInitialData()")
         }
         
         print("🔧 ProfileViewModel: After loading, properties are:")
@@ -191,9 +199,14 @@ class ProfileViewModel: ObservableObject {
             return
         }
         
-        // First try to load from cache
+        // First try to load from cache - this ensures image persists during refresh
         if let cachedImageData = UserDefaults.standard.data(forKey: "cached_profile_image_\(userId)") {
+            print("🖼️ ProfileViewModel: Loading cached profile image")
+            // Use isInitializing to prevent triggering saveProfileImage() during load
+            let wasInitializing = self.isInitializing
+            self.isInitializing = true
             self.profileImageData = cachedImageData
+            self.isInitializing = wasInitializing
         }
         
         let db = Firestore.firestore()
@@ -251,25 +264,43 @@ class ProfileViewModel: ObservableObject {
                 // Mark initialization as complete
                 self?.isInitializing = false
                 
-                // Load profile image from Firebase Storage
+                // Load profile image from Firebase Storage URL (only if we don't already have one from cache)
+                // This ensures cached images persist and aren't cleared during async download
                 if let imageURL = data["profileImageURL"] as? String,
                    let url = URL(string: imageURL) {
-                    URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-                        if let error = error {
-                            print("Error downloading profile image: \(error.localizedDescription)")
-                            return
-                        }
-                        guard let data = data,
-                              let self = self else { return }
-                        
-                            DispatchQueue.main.async {
-                            self.profileImageData = data
-                                // Cache the image data
-                            if let userId = Auth.auth().currentUser?.uid {
-                                UserDefaults.standard.set(data, forKey: "cached_profile_image_\(userId)")
+                    // Only download if we don't already have image data or if URL changed
+                    let cachedURL = UserDefaults.standard.string(forKey: "profile_image_url_\(userId)")
+                    if cachedURL != imageURL || self?.profileImageData == nil {
+                        print("🖼️ ProfileViewModel: Downloading profile image from URL: \(imageURL)")
+                        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+                            if let error = error {
+                                print("❌ Error downloading profile image: \(error.localizedDescription)")
+                                // Don't clear existing image on download error
+                                return
                             }
-                        }
-                    }.resume()
+                            guard let data = data,
+                                  let self = self else { return }
+                            
+                            DispatchQueue.main.async {
+                                print("✅ ProfileViewModel: Successfully downloaded profile image, updating...")
+                                // Use isInitializing to prevent triggering upload again
+                                let wasInitializing = self.isInitializing
+                                self.isInitializing = true
+                                self.profileImageData = data
+                                self.isInitializing = wasInitializing
+                                
+                                // Cache the image data and URL
+                                if let userId = Auth.auth().currentUser?.uid {
+                                    UserDefaults.standard.set(data, forKey: "cached_profile_image_\(userId)")
+                                    UserDefaults.standard.set(imageURL, forKey: "profile_image_url_\(userId)")
+                                }
+                            }
+                        }.resume()
+                    } else {
+                        print("🖼️ ProfileViewModel: Profile image URL unchanged, keeping cached image")
+                    }
+                } else {
+                    print("🖼️ ProfileViewModel: No profileImageURL in Firestore, keeping cached image if available")
                 }
             }
         }
